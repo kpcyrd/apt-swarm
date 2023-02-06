@@ -85,6 +85,7 @@ pub struct Export {}
 pub enum Plumbing {
     Canonicalize(Canonicalize),
     Fingerprint(Fingerprint),
+    Paths(Paths),
 }
 
 /// Transform a signed InRelease file into a canonical representation
@@ -98,6 +99,10 @@ pub struct Canonicalize {
 pub struct Fingerprint {
     pub paths: Vec<FileOrStdin>,
 }
+
+/// Print configured paths
+#[derive(Debug, Parser)]
+pub struct Paths {}
 
 /// Generate shell completions
 #[derive(Debug, Parser)]

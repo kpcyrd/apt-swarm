@@ -56,6 +56,10 @@ async fn main() -> Result<()> {
 
             pgp::load(&buf)?;
         }
+        SubCommand::Plumbing(Plumbing::Paths(_paths)) => {
+            let config = config::Config {};
+            println!("database path: {:?}", config.database_path()?);
+        }
         SubCommand::Completions(completions) => {
             args::gen_completions(&completions)?;
         }
