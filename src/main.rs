@@ -40,6 +40,29 @@ async fn main() -> Result<()> {
 
             db.flush().await?;
         }
+        SubCommand::Fetch(_fetch) => {
+            let config = config?;
+            let db = Database::open(&config)?;
+
+            let client = reqwest::Client::new();
+            for repository in &config.repositories {
+                for url in &repository.urls {
+                    info!("Fetching url {:?}...", url);
+                    let r = client
+                        .get(url)
+                        .send()
+                        .await
+                        .context("Failed to send request")?
+                        .error_for_status()
+                        .context("Received http error")?;
+                    let body = r
+                        .bytes()
+                        .await
+                        .context("Failed to download http response")?;
+                    db.add_release(&body)?;
+                }
+            }
+        }
         SubCommand::Plumbing(Plumbing::Canonicalize(mut canonicalize)) => {
             FileOrStdin::default_stdin(&mut canonicalize.paths);
 

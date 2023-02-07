@@ -15,8 +15,8 @@ Then write a configuration like this:
 
 ```toml
 [[repository]]
-url = "https://updates.signal.org/desktop/apt/dists/xenial/InRelease"
-pubkey = """
+urls = ["https://updates.signal.org/desktop/apt/dists/xenial/InRelease"]
+keyring = """
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBFjlSicBEACgho//0EzxuvuCn01LwFqGAgwPKcSSl4L+AWws5/YbsZZvmTBk

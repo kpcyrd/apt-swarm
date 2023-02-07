@@ -12,8 +12,8 @@ pub struct Config {
 
 #[derive(Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct Repository {
-    pub url: String,
-    pub pubkey: String,
+    pub urls: Vec<String>,
+    pub keyring: String,
 }
 
 impl Config {

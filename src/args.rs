@@ -67,6 +67,7 @@ pub struct Args {
 pub enum SubCommand {
     Import(Import),
     Export(Export),
+    Fetch(Fetch),
     #[command(subcommand)]
     Plumbing(Plumbing),
     Completions(Completions),
@@ -81,6 +82,10 @@ pub struct Import {
 /// Export all known InRelease files
 #[derive(Debug, Parser)]
 pub struct Export {}
+
+/// Fetch the latest InRelease files and import them
+#[derive(Debug, Parser)]
+pub struct Fetch {}
 
 /// Access to low-level features
 #[derive(Debug, Subcommand)]
