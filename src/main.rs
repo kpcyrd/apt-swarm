@@ -24,9 +24,11 @@ async fn main() -> Result<()> {
     };
     env_logger::init_from_env(Env::default().default_filter_or(log_level));
 
+    let config = config::Config::load_with_args(&args).await;
+
     match args.subcommand {
         SubCommand::Import(mut import) => {
-            let config = config::Config {};
+            let config = config?;
             let db = Database::open(&config)?;
 
             FileOrStdin::default_stdin(&mut import.paths);
@@ -57,8 +59,13 @@ async fn main() -> Result<()> {
             pgp::load(&buf)?;
         }
         SubCommand::Plumbing(Plumbing::Paths(_paths)) => {
-            let config = config::Config {};
+            let config = config?;
             println!("database path: {:?}", config.database_path()?);
+        }
+        SubCommand::Plumbing(Plumbing::Config(_config)) => {
+            let config = config?;
+            let config = serde_json::to_string_pretty(&config)?;
+            println!("{config}");
         }
         SubCommand::Completions(completions) => {
             args::gen_completions(&completions)?;

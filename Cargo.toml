@@ -15,6 +15,9 @@ log = "0.4.17"
 memchr = "2.5.0"
 reqwest = { version = "0.11.13", features = ["rustls-tls"], default-features = false }
 sequoia-openpgp = "1.12.0"
+serde = { version = "1.0.152", features = ["derive"] }
+serde_json = "1.0.92"
 sha2 = "0.10.6"
 sled = { version = "0.34.7", features = ["compression"] }
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "io-util", "io-std", "fs"] }
+toml = "0.7.1"

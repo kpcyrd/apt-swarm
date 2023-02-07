@@ -57,6 +57,8 @@ pub struct Args {
     /// Reduce logging output (can be used multiple times)
     #[arg(short, long, global = true, action(ArgAction::Count))]
     pub quiet: u8,
+    #[arg(short, long, global = true)]
+    pub config: Option<PathBuf>,
     #[command(subcommand)]
     pub subcommand: SubCommand,
 }
@@ -86,6 +88,7 @@ pub enum Plumbing {
     Canonicalize(Canonicalize),
     Fingerprint(Fingerprint),
     Paths(Paths),
+    Config(Config),
 }
 
 /// Transform a signed InRelease file into a canonical representation
@@ -103,6 +106,10 @@ pub struct Fingerprint {
 /// Print configured paths
 #[derive(Debug, Parser)]
 pub struct Paths {}
+
+/// Print applied configuration
+#[derive(Debug, Parser)]
+pub struct Config {}
 
 /// Generate shell completions
 #[derive(Debug, Parser)]
