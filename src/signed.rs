@@ -12,7 +12,7 @@ pub struct Signed {
 }
 
 impl Signed {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8])> {
         let content_start = bytes
             .strip_prefix(b"-----BEGIN PGP SIGNED MESSAGE-----\n")
             .context("InRelease is expected to start with `-----BEGIN PGP SIGNED MESSAGE-----`")?;
@@ -21,17 +21,33 @@ impl Signed {
             let pos = 1 + memchr(b'\n', bytes).context("Failed to find end of signed message")?;
             bytes = &bytes[pos..];
         }
+
         let content = content_start[..content_start.len() - bytes.len()].to_vec();
 
+        let signature_start = bytes;
+        let remaining = {
+            let mut bytes = bytes;
+            loop {
+                if let Some(bytes) = bytes.strip_prefix(b"-----END PGP SIGNATURE-----\n") {
+                    break bytes;
+                } else {
+                    let pos =
+                        1 + memchr(b'\n', bytes).context("Failed to find end of signed message")?;
+                    bytes = &bytes[pos..];
+                }
+            }
+        };
+        let signature = &signature_start[..signature_start.len() - remaining.len()];
+
         let mut reader = armor::Reader::from_bytes(
-            bytes,
+            signature,
             armor::ReaderMode::Tolerant(Some(armor::Kind::Signature)),
         );
 
         let mut signature = Vec::new();
         reader.read_to_end(&mut signature)?;
 
-        Ok(Signed { content, signature })
+        Ok((Signed { content, signature }, remaining))
     }
 
     pub fn to_clear_signed(&self) -> Result<Vec<u8>> {
@@ -47,8 +63,8 @@ impl Signed {
     }
 }
 
-pub fn canonicalize(doc: &[u8]) -> Result<Vec<u8>> {
-    let signed = Signed::from_bytes(doc)?;
+pub fn canonicalize(doc: &[u8]) -> Result<(Vec<u8>, &[u8])> {
+    let (signed, remaining) = Signed::from_bytes(doc)?;
 
     let mut ppr = PacketParser::from_bytes(&signed.signature)?;
     while let PacketParserResult::Some(pp) = ppr {
@@ -62,7 +78,8 @@ pub fn canonicalize(doc: &[u8]) -> Result<Vec<u8>> {
         }
     }
 
-    signed.to_clear_signed()
+    let signed = signed.to_clear_signed()?;
+    Ok((signed, remaining))
 }
 
 #[cfg(test)]
@@ -118,7 +135,8 @@ Aee63sxMlmRBCwC+QKeH
 
     #[test]
     fn test_parse_signed() -> Result<()> {
-        let signed = Signed::from_bytes(IN_RELEASE)?;
+        let (signed, remaining) = Signed::from_bytes(IN_RELEASE)?;
+        assert_eq!(remaining, b"");
         assert_eq!(
             signed,
             Signed {
@@ -159,14 +177,15 @@ SHA256:
 
     #[test]
     fn test_canonicalize_already_canonical() -> Result<()> {
-        let canonical = canonicalize(IN_RELEASE)?;
+        let (canonical, remaining) = canonicalize(IN_RELEASE)?;
+        assert_eq!(remaining, b"");
         assert_eq!(canonical, IN_RELEASE);
         Ok(())
     }
 
     #[test]
     fn test_canonicalize_strip_version() -> Result<()> {
-        let canonical = canonicalize(b"-----BEGIN PGP SIGNED MESSAGE-----
+        let (canonical, remaining) = canonicalize(b"-----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA256
 
 Origin: . xenial
@@ -213,6 +232,7 @@ Aee63sxMlmRBCwC+QKeH
 =zXvj
 -----END PGP SIGNATURE-----
 ")?;
+        assert_eq!(remaining, b"");
         assert_eq!(canonical, IN_RELEASE);
         Ok(())
     }

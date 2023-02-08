@@ -34,8 +34,15 @@ async fn main() -> Result<()> {
             FileOrStdin::default_stdin(&mut import.paths);
             for path in import.paths {
                 let buf = path.read().await?;
-                // TODO: verify signature
-                db.add_release(&buf)?;
+
+                let mut bytes = &buf[..];
+                while !bytes.is_empty() {
+                    let (normalized, remaining) =
+                        signed::canonicalize(bytes).context("Failed to canonicalize release")?;
+                    // TODO: verify signature
+                    db.add_release(&normalized)?;
+                    bytes = remaining;
+                }
             }
 
             db.flush().await?;
@@ -100,8 +107,12 @@ async fn main() -> Result<()> {
             let mut stdout = io::stdout();
             for path in canonicalize.paths {
                 let buf = path.read().await?;
-                let normalized = signed::canonicalize(&buf)?;
-                stdout.write_all(&normalized).await?;
+                let mut cur = &buf[..];
+                while !cur.is_empty() {
+                    let (normalized, remaining) = signed::canonicalize(cur)?;
+                    stdout.write_all(&normalized).await?;
+                    cur = remaining;
+                }
             }
         }
         SubCommand::Plumbing(Plumbing::Fingerprint(_fingerprint)) => {

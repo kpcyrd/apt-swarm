@@ -45,12 +45,14 @@ impl Database {
     }
 
     pub fn add_release(&self, release: &[u8]) -> Result<()> {
-        let normalized = signed::canonicalize(release).context("Failed to canonicalize release")?;
+        // TODO: consider making a `Normalized` type to allow passing already normalized structs, without risking of getting passed un-normalized releases
+        let (normalized, _remaining) =
+            signed::canonicalize(release).context("Failed to canonicalize release")?;
 
         let mut hasher = Sha256::new();
         hasher.update(&normalized);
         let result = hasher.finalize();
-        let hash = format!("{result:x}");
+        let hash = format!("sha256:{result:x}");
 
         info!("Adding release to database: {hash:?}");
         self.insert(hash.as_bytes(), &normalized)?;
