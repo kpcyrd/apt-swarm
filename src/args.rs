@@ -68,6 +68,7 @@ pub enum SubCommand {
     Import(Import),
     Export(Export),
     Fetch(Fetch),
+    Ls(Ls),
     #[command(subcommand)]
     Plumbing(Plumbing),
     Completions(Completions),
@@ -88,6 +89,10 @@ pub struct Export {
 /// Fetch the latest InRelease files and import them
 #[derive(Debug, Parser)]
 pub struct Fetch {}
+
+/// List hashes of all known releases
+#[derive(Debug, Parser)]
+pub struct Ls {}
 
 /// Access to low-level features
 #[derive(Debug, Subcommand)]

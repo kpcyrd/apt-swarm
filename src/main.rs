@@ -83,6 +83,17 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        SubCommand::Ls(_ls) => {
+            let config = config?;
+            let db = Database::open(&config)?;
+
+            let mut stdout = io::stdout();
+            for item in db.scan_prefix(&[]) {
+                let (hash, _data) = item.context("Failed to read from database")?;
+                stdout.write_all(&hash).await?;
+                stdout.write_all(b"\n").await?;
+            }
+        }
         SubCommand::Plumbing(Plumbing::Canonicalize(mut canonicalize)) => {
             FileOrStdin::default_stdin(&mut canonicalize.paths);
 
