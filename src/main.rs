@@ -40,6 +40,26 @@ async fn main() -> Result<()> {
 
             db.flush().await?;
         }
+        SubCommand::Export(export) => {
+            let config = config?;
+            let db = Database::open(&config)?;
+
+            let mut stdout = io::stdout();
+            if export.release_hashes.is_empty() {
+                for item in db.scan_prefix(&[]) {
+                    let (_hash, data) = item.context("Failed to read from database")?;
+                    stdout.write_all(&data).await?;
+                }
+            } else {
+                for hash in &export.release_hashes {
+                    let data = db
+                        .get(hash)
+                        .context("Failed to read database")?
+                        .with_context(|| anyhow!("Failed to find key in database: {hash:?}"))?;
+                    stdout.write_all(&data).await?;
+                }
+            }
+        }
         SubCommand::Fetch(_fetch) => {
             let config = config?;
             let db = Database::open(&config)?;
@@ -93,7 +113,6 @@ async fn main() -> Result<()> {
         SubCommand::Completions(completions) => {
             args::gen_completions(&completions)?;
         }
-        _ => todo!("Subcommand is not implemented yet"),
     }
 
     Ok(())

@@ -56,4 +56,8 @@ impl Database {
         self.insert(hash.as_bytes(), &normalized)?;
         Ok(())
     }
+
+    pub fn scan_prefix(&self, prefix: &[u8]) -> sled::Iter {
+        self.sled.scan_prefix(prefix)
+    }
 }
