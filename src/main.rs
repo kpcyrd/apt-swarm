@@ -91,15 +91,23 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        SubCommand::Ls(_ls) => {
+        SubCommand::Ls(ls) => {
             let config = config?;
             let db = Database::open(&config)?;
 
             let mut stdout = io::stdout();
+            let mut count = 0;
             for item in db.scan_prefix(&[]) {
+                if ls.count {
+                    count += 1;
+                    continue;
+                }
                 let (hash, _data) = item.context("Failed to read from database")?;
                 stdout.write_all(&hash).await?;
                 stdout.write_all(b"\n").await?;
+            }
+            if ls.count {
+                println!("{}", count);
             }
         }
         SubCommand::Keyring(_keyring) => {

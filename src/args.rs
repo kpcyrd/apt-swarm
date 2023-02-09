@@ -57,6 +57,7 @@ pub struct Args {
     /// Reduce logging output (can be used multiple times)
     #[arg(short, long, global = true, action(ArgAction::Count))]
     pub quiet: u8,
+    /// Path to config file to use
     #[arg(short, long, global = true)]
     pub config: Option<PathBuf>,
     #[command(subcommand)]
@@ -93,7 +94,11 @@ pub struct Fetch {}
 
 /// List hashes of all known releases
 #[derive(Debug, Parser)]
-pub struct Ls {}
+pub struct Ls {
+    /// Count keys present in database instead of listing them
+    #[arg(short = 'C', long)]
+    pub count: bool,
+}
 
 /// List all keys currently configured for monitoring
 #[derive(Debug, Parser)]
