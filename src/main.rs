@@ -7,6 +7,7 @@ use apt_swarm::signed;
 use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
+use std::os::unix::ffi::OsStrExt;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -95,9 +96,15 @@ async fn main() -> Result<()> {
             let config = config?;
             let db = Database::open(&config)?;
 
+            let prefix = if let Some(prefix) = &ls.prefix {
+                prefix.as_bytes()
+            } else {
+                &[]
+            };
+
             let mut stdout = io::stdout();
             let mut count = 0;
-            for item in db.scan_prefix(&[]) {
+            for item in db.scan_prefix(prefix) {
                 if ls.count {
                     count += 1;
                     continue;
@@ -106,14 +113,15 @@ async fn main() -> Result<()> {
                 stdout.write_all(&hash).await?;
                 stdout.write_all(b"\n").await?;
             }
+
             if ls.count {
-                println!("{}", count);
+                println!("{count}");
             }
         }
         SubCommand::Keyring(_keyring) => {
             let config = config?;
             for repository in &config.repositories {
-                let keys = pgp::load(&repository.keyring.as_bytes())?;
+                let keys = pgp::load(repository.keyring.as_bytes())?;
                 for key in &keys {
                     for uid in &key.uids {
                         println!("{} {}", key.fingerprint.green(), uid);

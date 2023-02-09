@@ -95,6 +95,8 @@ pub struct Fetch {}
 /// List hashes of all known releases
 #[derive(Debug, Parser)]
 pub struct Ls {
+    /// Use a specific prefix to filter by
+    pub prefix: Option<OsString>,
     /// Count keys present in database instead of listing them
     #[arg(short = 'C', long)]
     pub count: bool,
