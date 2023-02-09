@@ -69,6 +69,7 @@ pub enum SubCommand {
     Export(Export),
     Fetch(Fetch),
     Ls(Ls),
+    Keyring(Keyring),
     #[command(subcommand)]
     Plumbing(Plumbing),
     Completions(Completions),
@@ -93,6 +94,10 @@ pub struct Fetch {}
 /// List hashes of all known releases
 #[derive(Debug, Parser)]
 pub struct Ls {}
+
+/// List all keys currently configured for monitoring
+#[derive(Debug, Parser)]
+pub struct Keyring {}
 
 /// Access to low-level features
 #[derive(Debug, Subcommand)]

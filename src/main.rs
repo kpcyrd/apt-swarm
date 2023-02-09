@@ -5,6 +5,7 @@ use apt_swarm::errors::*;
 use apt_swarm::pgp;
 use apt_swarm::signed;
 use clap::Parser;
+use colored::Colorize;
 use env_logger::Env;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -99,6 +100,17 @@ async fn main() -> Result<()> {
                 let (hash, _data) = item.context("Failed to read from database")?;
                 stdout.write_all(&hash).await?;
                 stdout.write_all(b"\n").await?;
+            }
+        }
+        SubCommand::Keyring(_keyring) => {
+            let config = config?;
+            for repository in &config.repositories {
+                let keys = pgp::load(&repository.keyring.as_bytes())?;
+                for key in &keys {
+                    for uid in &key.uids {
+                        println!("{} {}", key.fingerprint.green(), uid);
+                    }
+                }
             }
         }
         SubCommand::Plumbing(Plumbing::Canonicalize(mut canonicalize)) => {
