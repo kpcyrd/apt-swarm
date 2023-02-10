@@ -16,7 +16,7 @@ pub fn load(keyring: &[u8]) -> Result<Vec<SigningKey>> {
     for certo in CertParser::from(ppr) {
         let cert = certo.context("Error reading pgp key")?;
 
-        let fingerprint = cert.fingerprint().to_string();
+        let fingerprint = format!("{:X}", cert.fingerprint());
         let mut uids = Vec::new();
         for ua in cert.userids() {
             uids.push(ua.userid().to_string());
