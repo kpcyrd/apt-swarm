@@ -71,6 +71,19 @@ N+O606NOXLwcmq5KZL0g
 """
 ```
 
+## Status
+
+This project is experimental. PGP is complicated and p2p security is difficult,
+it may use a lot of disk space if somebody finds a way to bypass the vandalism
+protection.
+
+There's also the risk of a false-negative, the pgp implementation used by
+apt-get may consider a signature as valid that we consider invalid. If
+apt-swarm considers the signature as invalid it won't accept this release into
+the network and it won't appear in your audit logs.
+
+apt-swarm can't detect network-partitioning attacks and doesn't intend to.
+
 ## License
 
 `GPL-3.0-or-later`

@@ -1,4 +1,5 @@
 use apt_swarm::args::{self, Args, FileOrStdin, Plumbing, SubCommand};
+use apt_swarm::keyring::Keyring;
 use apt_swarm::config;
 use apt_swarm::db::Database;
 use apt_swarm::errors::*;
@@ -88,6 +89,7 @@ async fn main() -> Result<()> {
                         .bytes()
                         .await
                         .context("Failed to download http response")?;
+                    // TODO: verify signature
                     db.add_release(&body)?;
                 }
             }
@@ -120,12 +122,10 @@ async fn main() -> Result<()> {
         }
         SubCommand::Keyring(_keyring) => {
             let config = config?;
-            for repository in &config.repositories {
-                let keys = pgp::load(repository.keyring.as_bytes())?;
-                for key in &keys {
-                    for uid in &key.uids {
-                        println!("{} {}", key.fingerprint.green(), uid);
-                    }
+            let keyring = Keyring::load(&config)?;
+            for key in &keyring.keys {
+                for uid in &key.uids {
+                    println!("{}  {}", key.fingerprint.green(), uid);
                 }
             }
         }
