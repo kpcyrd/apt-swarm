@@ -8,7 +8,7 @@ pub struct SigningKey {
     pub fingerprint: sequoia_openpgp::Fingerprint,
     pub cert: Cert,
     pub uids: Vec<String>,
-    pub key_handles: Vec<KeyHandle>,
+    pub key_handles: Vec<(KeyHandle, Fingerprint)>,
 }
 
 impl SigningKey {
@@ -18,8 +18,9 @@ impl SigningKey {
 
     pub fn register_keyhandles(&mut self, fp: Fingerprint) {
         let keyid = KeyID::from(&fp);
-        self.key_handles.push(KeyHandle::KeyID(keyid));
-        self.key_handles.push(KeyHandle::Fingerprint(fp));
+        self.key_handles.push((KeyHandle::KeyID(keyid), fp.clone()));
+        self.key_handles
+            .push((KeyHandle::Fingerprint(fp.clone()), fp));
     }
 }
 
