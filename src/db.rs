@@ -1,6 +1,6 @@
 use crate::config::Config;
 use crate::errors::*;
-use crate::signed;
+use crate::signed::Signed;
 use sha2::{Digest, Sha256};
 
 #[derive(Debug)]
@@ -44,10 +44,8 @@ impl Database {
         Ok(())
     }
 
-    pub fn add_release(&self, release: &[u8]) -> Result<()> {
-        // TODO: consider making a `Normalized` type to allow passing already normalized structs, without risking of getting passed un-normalized releases
-        let (normalized, _remaining) =
-            signed::canonicalize(release).context("Failed to canonicalize release")?;
+    pub fn add_release(&self, signed: &Signed) -> Result<()> {
+        let normalized = signed.to_clear_signed()?;
 
         let mut hasher = Sha256::new();
         hasher.update(&normalized);

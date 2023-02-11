@@ -1,10 +1,11 @@
 use apt_swarm::args::{self, Args, FileOrStdin, Plumbing, SubCommand};
-use apt_swarm::keyring::Keyring;
 use apt_swarm::config;
 use apt_swarm::db::Database;
 use apt_swarm::errors::*;
+use apt_swarm::keyring::Keyring;
 use apt_swarm::pgp;
 use apt_swarm::signed;
+use apt_swarm::signed::Signed;
 use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
@@ -32,6 +33,7 @@ async fn main() -> Result<()> {
     match args.subcommand {
         SubCommand::Import(mut import) => {
             let config = config?;
+            let keyring = Keyring::load(&config)?;
             let db = Database::open(&config)?;
 
             FileOrStdin::default_stdin(&mut import.paths);
@@ -40,10 +42,13 @@ async fn main() -> Result<()> {
 
                 let mut bytes = &buf[..];
                 while !bytes.is_empty() {
-                    let (normalized, remaining) =
-                        signed::canonicalize(bytes).context("Failed to canonicalize release")?;
-                    // TODO: verify signature
-                    db.add_release(&normalized)?;
+                    let (signed, remaining) =
+                        Signed::from_bytes(bytes).context("Failed to parse release file")?;
+
+                    for variant in signed.canonicalize(&keyring)? {
+                        db.add_release(&variant)?;
+                    }
+
                     bytes = remaining;
                 }
             }
@@ -72,6 +77,7 @@ async fn main() -> Result<()> {
         }
         SubCommand::Fetch(_fetch) => {
             let config = config?;
+            let keyring = Keyring::load(&config)?;
             let db = Database::open(&config)?;
 
             let client = reqwest::Client::new();
@@ -89,8 +95,13 @@ async fn main() -> Result<()> {
                         .bytes()
                         .await
                         .context("Failed to download http response")?;
-                    // TODO: verify signature
-                    db.add_release(&body)?;
+
+                    let (signed, _remaining) = Signed::from_bytes(&body)
+                        .context("Failed to parse http response as release")?;
+
+                    for variant in signed.canonicalize(&keyring)? {
+                        db.add_release(&variant)?;
+                    }
                 }
             }
         }
@@ -123,9 +134,9 @@ async fn main() -> Result<()> {
         SubCommand::Keyring(_keyring) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            for key in &keyring.keys {
+            for key in keyring.keys.values() {
                 for uid in &key.uids {
-                    println!("{}  {}", key.fingerprint.green(), uid);
+                    println!("{}  {}", key.hex_fingerprint.green(), uid);
                 }
             }
         }

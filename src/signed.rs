@@ -1,11 +1,12 @@
 use crate::errors::*;
+use crate::keyring::Keyring;
 use memchr::memchr;
 use sequoia_openpgp::armor;
 use sequoia_openpgp::parse::{PacketParser, PacketParserResult, Parse};
 use sequoia_openpgp::Packet;
 use std::io::prelude::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Signed {
     pub content: Vec<u8>,
     pub signature: Vec<u8>,
@@ -60,6 +61,24 @@ impl Signed {
         writer.finalize()?;
 
         Ok(out)
+    }
+
+    pub fn canonicalize(&self, keyring: &Keyring) -> Result<Vec<Signed>> {
+        // todo!()
+
+        let mut ppr = PacketParser::from_bytes(&self.signature)?;
+        while let PacketParserResult::Some(pp) = ppr {
+            let (packet, next_ppr) = pp.recurse()?;
+            ppr = next_ppr;
+            debug!("Found packet in signature block: {packet:?}");
+            if let Packet::Signature(sig) = packet {
+                for issuer in sig.get_issuers() {
+                    debug!("Found issuer in signature packet: {issuer:?}");
+                }
+            }
+        }
+
+        Ok(vec![self.clone()])
     }
 }
 
