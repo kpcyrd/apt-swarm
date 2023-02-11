@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::errors::*;
 use crate::pgp;
+use crate::pgp::SigningKey;
 use sequoia_openpgp::packet::Signature;
 use sequoia_openpgp::{Fingerprint, KeyID};
 use std::collections::BTreeMap;
@@ -31,10 +32,30 @@ impl Keyring {
         self.identifiers.insert(fp.to_string(), fp.clone());
     }
 
-    pub fn verify(&self, data: &[u8], sig: &Signature) -> Result<()> {
+    pub fn find_key(&self, sig: &Signature) -> Result<&SigningKey> {
         for issuer in sig.get_issuers() {
             debug!("Found issuer in signature packet: {issuer:?}");
+            if let Some(fp) = self.identifiers.get(&issuer.to_string()) {
+                debug!("Found fingerprint for given issuer: {fp:?}");
+                let key = self
+                    .keys
+                    .get(fp)
+                    .with_context(|| anyhow!("Failed to get signing key by fingerprint: {fp:?}"))?;
+                return Ok(key);
+            }
         }
-        todo!()
+        bail!("Could not find key for given signature")
+    }
+
+    pub fn verify(&self, data: &[u8], sig: &Signature) -> Result<()> {
+        let key = self.find_key(sig)?;
+        for key in &key.keys {
+            let mut sig = sig.clone();
+            if let Ok(()) = sig.verify_message(key, data) {
+                debug!("Successfully verified signature with key {:?}", key);
+                return Ok(());
+            }
+        }
+        bail!("Signature could not be verified with any of the pgp certificates public keys")
     }
 }

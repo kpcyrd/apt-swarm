@@ -96,7 +96,7 @@ impl Signed {
             }
         }
 
-        Ok(vec![self.clone()])
+        Ok(out)
     }
 }
 
@@ -195,7 +195,8 @@ SHA256:
 
     #[test]
     fn test_canonicalize_already_canonical() -> Result<()> {
-        let (canonical, remaining) = canonicalize(IN_RELEASE)?;
+        let (canonical, remaining) = Signed::from_bytes(IN_RELEASE)?;
+        let canonical = canonical.to_clear_signed()?;
         assert_eq!(remaining, b"");
         assert_eq!(canonical, IN_RELEASE);
         Ok(())
@@ -203,7 +204,7 @@ SHA256:
 
     #[test]
     fn test_canonicalize_strip_version() -> Result<()> {
-        let (canonical, remaining) = canonicalize(b"-----BEGIN PGP SIGNED MESSAGE-----
+        let (canonical, remaining) = Signed::from_bytes(b"-----BEGIN PGP SIGNED MESSAGE-----
 Hash: SHA256
 
 Origin: . xenial
@@ -250,6 +251,7 @@ Aee63sxMlmRBCwC+QKeH
 =zXvj
 -----END PGP SIGNATURE-----
 ")?;
+        let canonical = canonical.to_clear_signed()?;
         assert_eq!(remaining, b"");
         assert_eq!(canonical, IN_RELEASE);
         Ok(())
