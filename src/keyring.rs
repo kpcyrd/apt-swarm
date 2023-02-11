@@ -24,14 +24,25 @@ impl Keyring {
     pub fn load(config: &Config) -> Result<Self> {
         let mut keyring = Keyring::default();
         for repository in &config.repositories {
-            let keys = pgp::load(repository.keyring.as_bytes())?;
-            for key in keys {
-                keyring.register_identifiers(&key);
-                let fingerprint = key.fingerprint.clone();
-                keyring.keys.insert(fingerprint, key);
-            }
+            keyring.add_keyring(repository.keyring.as_bytes())?;
         }
         Ok(keyring)
+    }
+
+    pub fn new(keyring: &[u8]) -> Result<Self> {
+        let mut k = Keyring::default();
+        k.add_keyring(keyring)?;
+        Ok(k)
+    }
+
+    pub fn add_keyring(&mut self, keyring: &[u8]) -> Result<()> {
+        let keys = pgp::load(keyring)?;
+        for key in keys {
+            self.register_identifiers(&key);
+            let fingerprint = key.fingerprint.clone();
+            self.keys.insert(fingerprint, key);
+        }
+        Ok(())
     }
 
     pub fn register_identifiers(&mut self, key: &SigningKey) {
