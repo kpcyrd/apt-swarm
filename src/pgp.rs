@@ -1,15 +1,14 @@
 use crate::errors::*;
 use sequoia_openpgp::cert::prelude::*;
-use sequoia_openpgp::packet::key::{PrimaryRole, PublicParts};
 use sequoia_openpgp::parse::{PacketParser, Parse};
-use sequoia_openpgp::{Fingerprint, KeyHandle, KeyID};
+use sequoia_openpgp::{Cert, Fingerprint, KeyHandle, KeyID};
 
 #[derive(Debug)]
 pub struct SigningKey {
     pub fingerprint: sequoia_openpgp::Fingerprint,
+    pub cert: Cert,
     pub uids: Vec<String>,
     pub key_handles: Vec<KeyHandle>,
-    pub keys: Vec<sequoia_openpgp::packet::Key<PublicParts, PrimaryRole>>,
 }
 
 impl SigningKey {
@@ -35,13 +34,10 @@ pub fn load(keyring: &[u8]) -> Result<Vec<SigningKey>> {
 
         let mut signing_key = SigningKey {
             fingerprint,
+            cert: cert.clone(),
             uids: Vec::new(),
-            keys: Vec::new(),
             key_handles: Vec::new(),
         };
-
-        // TODO: this is missing subkeys
-        signing_key.keys.push(cert.primary_key().key().to_owned());
 
         for key in cert.keys() {
             signing_key.register_keyhandles(key.fingerprint());
