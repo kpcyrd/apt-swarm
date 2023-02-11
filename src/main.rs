@@ -135,7 +135,7 @@ async fn main() -> Result<()> {
             let keyring = Keyring::load(&config)?;
             for key in keyring.keys.values() {
                 for uid in &key.uids {
-                    println!("{}  {}", key.hex_fingerprint.green(), uid);
+                    println!("{}  {}", key.hex_fingerprint().green(), uid);
                 }
             }
         }

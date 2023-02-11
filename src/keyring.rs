@@ -3,7 +3,7 @@ use crate::errors::*;
 use crate::pgp;
 use crate::pgp::SigningKey;
 use sequoia_openpgp::packet::Signature;
-use sequoia_openpgp::{Fingerprint, KeyID};
+use sequoia_openpgp::Fingerprint;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Default)]
@@ -18,18 +18,21 @@ impl Keyring {
         for repository in &config.repositories {
             let keys = pgp::load(repository.keyring.as_bytes())?;
             for key in keys {
+                keyring.register_identifiers(&key);
                 let fingerprint = key.fingerprint.clone();
-                keyring.register_fingerprint(&fingerprint);
                 keyring.keys.insert(fingerprint, key);
             }
         }
         Ok(keyring)
     }
 
-    pub fn register_fingerprint(&mut self, fp: &Fingerprint) {
-        self.identifiers
-            .insert(KeyID::from(fp).to_string(), fp.clone());
-        self.identifiers.insert(fp.to_string(), fp.clone());
+    pub fn register_identifiers(&mut self, key: &SigningKey) {
+        for id in &key.key_handles {
+            let id = id.to_string();
+            debug!("Linking identifier for key {:X}: {id:?}", key.fingerprint);
+            self.identifiers
+                .insert(id, key.fingerprint.clone());
+        }
     }
 
     pub fn find_key(&self, sig: &Signature) -> Result<&SigningKey> {
