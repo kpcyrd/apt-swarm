@@ -3,6 +3,7 @@ use crate::keyring::Keyring;
 use memchr::memchr;
 use sequoia_openpgp::armor;
 use sequoia_openpgp::parse::{PacketParser, PacketParserResult, Parse};
+use sequoia_openpgp::serialize::Serialize;
 use sequoia_openpgp::Packet;
 use std::io::prelude::*;
 
@@ -63,42 +64,40 @@ impl Signed {
         Ok(out)
     }
 
-    pub fn canonicalize(&self, keyring: &Keyring) -> Result<Vec<Signed>> {
-        // todo!()
+    pub fn canonicalize(&self, keyring: &Option<Keyring>) -> Result<Vec<Signed>> {
+        let mut out = Vec::new();
 
         let mut ppr = PacketParser::from_bytes(&self.signature)?;
         while let PacketParserResult::Some(pp) = ppr {
             let (packet, next_ppr) = pp.recurse()?;
             ppr = next_ppr;
             debug!("Found packet in signature block: {packet:?}");
-            if let Packet::Signature(sig) = packet {
-                for issuer in sig.get_issuers() {
-                    debug!("Found issuer in signature packet: {issuer:?}");
+            if let Packet::Signature(sig) = &packet {
+                if let Some(keyring) = keyring {
+                    if let Err(err) = keyring.verify(&self.content, sig) {
+                        debug!(
+                            "Signature could not be verified, dismissing signature packet: {err:#}"
+                        );
+                        continue;
+                    }
                 }
+
+                let mut signature = Vec::new();
+                packet
+                    .serialize(&mut signature)
+                    .context("Failed to serialize OpenPGP packet")?;
+
+                out.push(Signed {
+                    content: self.content.clone(),
+                    signature,
+                });
+            } else {
+                debug!("Unknown openpgp packet in signature block, dismissing: {packet:?}");
             }
         }
 
         Ok(vec![self.clone()])
     }
-}
-
-pub fn canonicalize(doc: &[u8]) -> Result<(Vec<u8>, &[u8])> {
-    let (signed, remaining) = Signed::from_bytes(doc)?;
-
-    let mut ppr = PacketParser::from_bytes(&signed.signature)?;
-    while let PacketParserResult::Some(pp) = ppr {
-        let (packet, next_ppr) = pp.recurse()?;
-        ppr = next_ppr;
-        debug!("Found packet in signature block: {packet:?}");
-        if let Packet::Signature(sig) = packet {
-            for issuer in sig.get_issuers() {
-                debug!("Found issuer in signature packet: {issuer:?}");
-            }
-        }
-    }
-
-    let signed = signed.to_clear_signed()?;
-    Ok((signed, remaining))
 }
 
 #[cfg(test)]

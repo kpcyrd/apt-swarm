@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::errors::*;
 use crate::pgp;
+use sequoia_openpgp::packet::Signature;
 use sequoia_openpgp::{Fingerprint, KeyID};
 use std::collections::BTreeMap;
 
@@ -28,5 +29,12 @@ impl Keyring {
         self.identifiers
             .insert(KeyID::from(fp).to_string(), fp.clone());
         self.identifiers.insert(fp.to_string(), fp.clone());
+    }
+
+    pub fn verify(&self, data: &[u8], sig: &Signature) -> Result<()> {
+        for issuer in sig.get_issuers() {
+            debug!("Found issuer in signature packet: {issuer:?}");
+        }
+        todo!()
     }
 }

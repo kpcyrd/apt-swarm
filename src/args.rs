@@ -79,6 +79,7 @@ pub enum SubCommand {
 /// Import signed InRelease files
 #[derive(Debug, Parser)]
 pub struct Import {
+    /// The input files to read (- for stdin)
     pub paths: Vec<FileOrStdin>,
 }
 
@@ -118,12 +119,17 @@ pub enum Plumbing {
 /// Transform a signed InRelease file into a canonical representation
 #[derive(Debug, Parser)]
 pub struct Canonicalize {
+    /// The input files to read (- for stdin)
     pub paths: Vec<FileOrStdin>,
+    /// Verify signatures belong to trusted key in keyring
+    #[arg(long)]
+    pub verify: bool,
 }
 
 /// Extract the fingerprint of a pgp key
 #[derive(Debug, Parser)]
 pub struct Fingerprint {
+    /// The input files to read (- for stdin)
     pub paths: Vec<FileOrStdin>,
 }
 

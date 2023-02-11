@@ -4,7 +4,6 @@ use apt_swarm::db::Database;
 use apt_swarm::errors::*;
 use apt_swarm::keyring::Keyring;
 use apt_swarm::pgp;
-use apt_swarm::signed;
 use apt_swarm::signed::Signed;
 use clap::Parser;
 use colored::Colorize;
@@ -33,7 +32,7 @@ async fn main() -> Result<()> {
     match args.subcommand {
         SubCommand::Import(mut import) => {
             let config = config?;
-            let keyring = Keyring::load(&config)?;
+            let keyring = Some(Keyring::load(&config)?);
             let db = Database::open(&config)?;
 
             FileOrStdin::default_stdin(&mut import.paths);
@@ -77,7 +76,7 @@ async fn main() -> Result<()> {
         }
         SubCommand::Fetch(_fetch) => {
             let config = config?;
-            let keyring = Keyring::load(&config)?;
+            let keyring = Some(Keyring::load(&config)?);
             let db = Database::open(&config)?;
 
             let client = reqwest::Client::new();
@@ -143,14 +142,27 @@ async fn main() -> Result<()> {
         SubCommand::Plumbing(Plumbing::Canonicalize(mut canonicalize)) => {
             FileOrStdin::default_stdin(&mut canonicalize.paths);
 
+            let keyring = if canonicalize.verify {
+                let config = config?;
+                Some(Keyring::load(&config)?)
+            } else {
+                None
+            };
+
             let mut stdout = io::stdout();
             for path in canonicalize.paths {
                 let buf = path.read().await?;
-                let mut cur = &buf[..];
-                while !cur.is_empty() {
-                    let (normalized, remaining) = signed::canonicalize(cur)?;
-                    stdout.write_all(&normalized).await?;
-                    cur = remaining;
+                let mut bytes = &buf[..];
+                while !bytes.is_empty() {
+                    let (signed, remaining) =
+                        Signed::from_bytes(bytes).context("Failed to parse release file")?;
+
+                    for variant in signed.canonicalize(&keyring)? {
+                        let text = variant.to_clear_signed()?;
+                        stdout.write_all(&text).await?;
+                    }
+
+                    bytes = remaining;
                 }
             }
         }
