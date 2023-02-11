@@ -67,7 +67,7 @@ impl Keyring {
 
     // TODO: this function normalizes data, this should be taken into account
     pub fn verify(&self, data: &[u8], sig: &Signature) -> Result<()> {
-        let (fp, signing_key) = self.find_signing_key(sig)?;
+        let (signer_fp, signing_key) = self.find_signing_key(sig)?;
 
         let body: Vec<u8> = match sig.typ() {
             SignatureType::Binary => {
@@ -110,13 +110,10 @@ impl Keyring {
             let key = key.key();
 
             // TODO: are we sure the issuer fingerprint is always pointing to the right key?
-            let key_fingerprint = key.fingerprint();
-            debug!("Attempting verification with {:X}", key_fingerprint);
-            if key_fingerprint != *fp {
-                debug!(
-                    "This key was not the issuer, skipping: {:?}",
-                    key_fingerprint
-                );
+            let key_fp = key.fingerprint();
+            debug!("Attempting verification with {:X}", key_fp);
+            if key_fp != *signer_fp {
+                debug!("This key was not the issuer, skipping: {:?}", key_fp);
                 continue;
             }
 

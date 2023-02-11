@@ -96,6 +96,10 @@ impl Signed {
             }
         }
 
+        if out.is_empty() {
+            warn!("Failed to find any trusted signatures in input data");
+        }
+
         Ok(out)
     }
 }
