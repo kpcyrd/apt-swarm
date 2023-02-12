@@ -8,13 +8,13 @@ use sequoia_openpgp::types::SignatureType;
 use sequoia_openpgp::Fingerprint;
 use std::collections::BTreeMap;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Subkey {
     pub parent: Fingerprint,
     pub fingerprint: Fingerprint,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Keyring {
     pub keys: BTreeMap<Fingerprint, pgp::SigningKey>,
     pub identifiers: BTreeMap<String, Subkey>,

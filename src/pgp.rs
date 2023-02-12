@@ -3,7 +3,7 @@ use sequoia_openpgp::cert::prelude::*;
 use sequoia_openpgp::parse::{PacketParser, Parse};
 use sequoia_openpgp::{Cert, Fingerprint, KeyHandle, KeyID};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SigningKey {
     pub fingerprint: sequoia_openpgp::Fingerprint,
     pub cert: Cert,

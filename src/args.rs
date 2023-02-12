@@ -91,7 +91,11 @@ pub struct Export {
 
 /// Fetch the latest InRelease files and import them
 #[derive(Debug, Parser)]
-pub struct Fetch {}
+pub struct Fetch {
+    /// Number of concurrent requests
+    #[arg(short = 'j', long)]
+    pub concurrency: Option<usize>,
+}
 
 /// List hashes of all known releases
 #[derive(Debug, Parser)]

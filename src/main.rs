@@ -8,10 +8,47 @@ use apt_swarm::signed::Signed;
 use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
+use sequoia_openpgp::Fingerprint;
 use sequoia_openpgp::KeyHandle;
 use std::os::unix::ffi::OsStrExt;
+use std::sync::Arc;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::task::JoinSet;
+
+const DEFAULT_FETCH_CONCURRENCY: usize = 4;
+
+async fn fetch_repository_updates(
+    client: &reqwest::Client,
+    keyring: &Option<Keyring>,
+    repository: &config::Repository,
+) -> Result<Vec<(Option<Fingerprint>, Signed)>> {
+    let mut out = Vec::new();
+
+    for url in &repository.urls {
+        info!("Fetching url {:?}...", url);
+        let r = client
+            .get(url)
+            .send()
+            .await
+            .context("Failed to send request")?
+            .error_for_status()
+            .context("Received http error")?;
+        let body = r
+            .bytes()
+            .await
+            .context("Failed to download http response")?;
+
+        let (signed, _remaining) =
+            Signed::from_bytes(&body).context("Failed to parse http response as release")?;
+
+        for item in signed.canonicalize(keyring)? {
+            out.push(item);
+        }
+    }
+
+    Ok(out)
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -78,36 +115,44 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        SubCommand::Fetch(_fetch) => {
+        SubCommand::Fetch(fetch) => {
             let config = config?;
-            let keyring = Some(Keyring::load(&config)?);
+            let keyring = Arc::new(Some(Keyring::load(&config)?));
             let db = Database::open(&config)?;
 
+            let concurrency = fetch.concurrency.unwrap_or(DEFAULT_FETCH_CONCURRENCY);
+            let mut queue = config.repositories.into_iter();
+            let mut pool = JoinSet::new();
             let client = reqwest::Client::new();
-            for repository in &config.repositories {
-                for url in &repository.urls {
-                    info!("Fetching url {:?}...", url);
-                    let r = client
-                        .get(url)
-                        .send()
-                        .await
-                        .context("Failed to send request")?
-                        .error_for_status()
-                        .context("Received http error")?;
-                    let body = r
-                        .bytes()
-                        .await
-                        .context("Failed to download http response")?;
 
-                    let (signed, _remaining) = Signed::from_bytes(&body)
-                        .context("Failed to parse http response as release")?;
-
-                    for (fp, variant) in signed.canonicalize(&keyring)? {
-                        let fp = fp.context(
-                            "Signature can't be imported because the signature is unverified",
-                        )?;
-                        db.add_release(&fp, &variant)?;
+            loop {
+                while pool.len() < concurrency {
+                    if let Some(repository) = queue.next() {
+                        let client = client.clone();
+                        let keyring = keyring.clone();
+                        pool.spawn(async move {
+                            fetch_repository_updates(&client, &keyring, &repository).await
+                        });
+                    } else {
+                        // no more tasks to schedule
+                        break;
                     }
+                }
+                if let Some(join) = pool.join_next().await {
+                    match join.context("Failed to join task")? {
+                        Ok(list) => {
+                            for (fp, variant) in list {
+                                let fp = fp.context(
+                                    "Signature can't be imported because the signature is unverified",
+                                )?;
+                                db.add_release(&fp, &variant)?;
+                            }
+                        }
+                        Err(err) => error!("Error fetching latest release: {err:#}"),
+                    }
+                } else {
+                    // no more tasks in pool
+                    break;
                 }
             }
         }
