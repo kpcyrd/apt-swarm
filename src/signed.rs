@@ -4,6 +4,7 @@ use memchr::memchr;
 use sequoia_openpgp::armor;
 use sequoia_openpgp::parse::{PacketParser, PacketParserResult, Parse};
 use sequoia_openpgp::serialize::Serialize;
+use sequoia_openpgp::Fingerprint;
 use sequoia_openpgp::Packet;
 use std::io::prelude::*;
 
@@ -64,7 +65,10 @@ impl Signed {
         Ok(out)
     }
 
-    pub fn canonicalize(&self, keyring: &Option<Keyring>) -> Result<Vec<Signed>> {
+    pub fn canonicalize(
+        &self,
+        keyring: &Option<Keyring>,
+    ) -> Result<Vec<(Option<Fingerprint>, Signed)>> {
         let mut out = Vec::new();
 
         let mut ppr = PacketParser::from_bytes(&self.signature)?;
@@ -73,24 +77,32 @@ impl Signed {
             ppr = next_ppr;
             debug!("Found packet in signature block: {packet:?}");
             if let Packet::Signature(sig) = &packet {
-                if let Some(keyring) = keyring {
-                    if let Err(err) = keyring.verify(&self.content, sig) {
-                        debug!(
-                            "Signature could not be verified, dismissing signature packet: {err:#}"
-                        );
-                        continue;
+                let fingerprint = if let Some(keyring) = keyring {
+                    match keyring.verify(&self.content, sig) {
+                        Ok(fingerprint) => Some(fingerprint),
+                        Err(err) => {
+                            debug!(
+                                "Signature could not be verified, dismissing signature packet: {err:#}"
+                            );
+                            continue;
+                        }
                     }
-                }
+                } else {
+                    None
+                };
 
                 let mut signature = Vec::new();
                 packet
                     .serialize(&mut signature)
                     .context("Failed to serialize OpenPGP packet")?;
 
-                out.push(Signed {
-                    content: self.content.clone(),
-                    signature,
-                });
+                out.push((
+                    fingerprint,
+                    Signed {
+                        content: self.content.clone(),
+                        signature,
+                    },
+                ));
             } else {
                 debug!("Unknown openpgp packet in signature block, dismissing: {packet:?}");
             }

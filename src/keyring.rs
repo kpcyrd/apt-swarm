@@ -77,7 +77,7 @@ impl Keyring {
     }
 
     // TODO: this function normalizes data, this should be taken into account
-    pub fn verify(&self, data: &[u8], sig: &Signature) -> Result<()> {
+    pub fn verify(&self, data: &[u8], sig: &Signature) -> Result<Fingerprint> {
         let (signer_fp, signing_key) = self.find_signing_key(sig)?;
 
         let body: Vec<u8> = match sig.typ() {
@@ -132,7 +132,7 @@ impl Keyring {
                 .verify_message(key, &body)
                 .context("Failed to verify message")?;
             debug!("Successfully verified signature");
-            return Ok(());
+            return Ok(key_fp);
         }
 
         bail!("Signature could not be verified with any of the pgp certificates public keys")

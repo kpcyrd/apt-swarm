@@ -44,8 +44,11 @@ async fn main() -> Result<()> {
                     let (signed, remaining) =
                         Signed::from_bytes(bytes).context("Failed to parse release file")?;
 
-                    for variant in signed.canonicalize(&keyring)? {
-                        db.add_release(&variant)?;
+                    for (fp, variant) in signed.canonicalize(&keyring)? {
+                        let fp = fp.context(
+                            "Signature can't be imported because the signature is unverified",
+                        )?;
+                        db.add_release(&fp, &variant)?;
                     }
 
                     bytes = remaining;
@@ -98,8 +101,11 @@ async fn main() -> Result<()> {
                     let (signed, _remaining) = Signed::from_bytes(&body)
                         .context("Failed to parse http response as release")?;
 
-                    for variant in signed.canonicalize(&keyring)? {
-                        db.add_release(&variant)?;
+                    for (fp, variant) in signed.canonicalize(&keyring)? {
+                        let fp = fp.context(
+                            "Signature can't be imported because the signature is unverified",
+                        )?;
+                        db.add_release(&fp, &variant)?;
                     }
                 }
             }
@@ -157,7 +163,7 @@ async fn main() -> Result<()> {
                     let (signed, remaining) =
                         Signed::from_bytes(bytes).context("Failed to parse release file")?;
 
-                    for variant in signed.canonicalize(&keyring)? {
+                    for (_fp, variant) in signed.canonicalize(&keyring)? {
                         let text = variant.to_clear_signed()?;
                         stdout.write_all(&text).await?;
                     }

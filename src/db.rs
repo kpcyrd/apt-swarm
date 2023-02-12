@@ -44,13 +44,13 @@ impl Database {
         Ok(())
     }
 
-    pub fn add_release(&self, signed: &Signed) -> Result<()> {
+    pub fn add_release(&self, fp: &sequoia_openpgp::Fingerprint, signed: &Signed) -> Result<()> {
         let normalized = signed.to_clear_signed()?;
 
         let mut hasher = Sha256::new();
         hasher.update(&normalized);
         let result = hasher.finalize();
-        let hash = format!("sha256:{result:x}");
+        let hash = format!("{fp:X}/sha256:{result:x}");
 
         info!("Adding release to database: {hash:?}");
         self.insert(hash.as_bytes(), &normalized)?;
