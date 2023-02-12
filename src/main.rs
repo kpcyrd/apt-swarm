@@ -8,6 +8,7 @@ use apt_swarm::signed::Signed;
 use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
+use sequoia_openpgp::KeyHandle;
 use std::os::unix::ffi::OsStrExt;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -140,8 +141,15 @@ async fn main() -> Result<()> {
             let config = config?;
             let keyring = Keyring::load(&config)?;
             for key in keyring.keys.values() {
+                let hex = key.hex_fingerprint();
                 for uid in &key.uids {
-                    println!("{}  {}", key.hex_fingerprint().green(), uid);
+                    println!("{}  {}", hex.green(), uid);
+                }
+                for (handle, _fp) in &key.key_handles {
+                    if let KeyHandle::Fingerprint(fp) = handle {
+                        let fp = format!("Subkey {fp:X}");
+                        println!("{}  {}", hex.green(), fp.yellow());
+                    }
                 }
             }
         }
