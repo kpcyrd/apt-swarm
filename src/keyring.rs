@@ -86,7 +86,6 @@ impl Keyring {
             }
             SignatureType::Text => {
                 let mut out = Vec::new();
-                let mut past_headers = false;
 
                 let mut bytes = data;
                 while !bytes.is_empty() {
@@ -94,13 +93,6 @@ impl Keyring {
                         let line = &bytes[..idx];
                         // TODO: this could be a `\r\n` newline, do we need to check for `\r`?
                         bytes = &bytes[idx + 1..];
-
-                        if !past_headers {
-                            if line.is_empty() {
-                                past_headers = true;
-                            }
-                            continue;
-                        }
 
                         out.extend(line);
                         if !bytes.is_empty() {

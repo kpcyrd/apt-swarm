@@ -17,10 +17,23 @@ pub struct Signed {
 
 impl Signed {
     pub fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8])> {
-        let content_start = bytes
+        let mut bytes = bytes
             .strip_prefix(b"-----BEGIN PGP SIGNED MESSAGE-----\n")
             .context("InRelease is expected to start with `-----BEGIN PGP SIGNED MESSAGE-----`")?;
-        let mut bytes = content_start;
+
+        loop {
+            let pos = 1 + memchr(b'\n', bytes)
+                .context("Failed to find end of cleartext signed message headers")?;
+            let line = &bytes[..pos];
+            bytes = &bytes[pos..];
+
+            // if the line was empty it's the end of headers
+            if line == b"\n" {
+                break;
+            }
+        }
+        let content_start = bytes;
+
         while !bytes.starts_with(b"-----BEGIN PGP SIGNATURE-----\n") {
             let pos = 1 + memchr(b'\n', bytes).context("Failed to find end of signed message")?;
             bytes = &bytes[pos..];
@@ -62,7 +75,7 @@ impl Signed {
 
     pub fn to_clear_signed(&self) -> Result<Vec<u8>> {
         let mut out = Vec::new();
-        out.extend(b"-----BEGIN PGP SIGNED MESSAGE-----\n");
+        out.extend(b"-----BEGIN PGP SIGNED MESSAGE-----\n\n");
         out.extend(self.content.as_slice());
 
         let mut writer = armor::Writer::new(&mut out, armor::Kind::Signature)?;
@@ -126,9 +139,9 @@ impl Signed {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bstr::BStr;
 
     const IN_RELEASE: &[u8] = b"-----BEGIN PGP SIGNED MESSAGE-----
-Hash: SHA256
 
 Origin: . xenial
 Label: . xenial
@@ -181,9 +194,7 @@ Aee63sxMlmRBCwC+QKeH
         assert_eq!(
             signed,
             Signed {
-                content: BString::from(b"Hash: SHA256
-
-Origin: . xenial
+                content: BString::from(b"Origin: . xenial
 Label: . xenial
 Suite: xenial
 Codename: xenial
@@ -221,7 +232,7 @@ SHA256:
         let (canonical, remaining) = Signed::from_bytes(IN_RELEASE)?;
         let canonical = canonical.to_clear_signed()?;
         assert_eq!(remaining, b"");
-        assert_eq!(canonical, IN_RELEASE);
+        assert_eq!(BStr::new(&canonical), BStr::new(IN_RELEASE));
         Ok(())
     }
 
@@ -287,9 +298,7 @@ Aee63sxMlmRBCwC+QKeH
         let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
         let canonical = signed.canonicalize(&Some(keyring))?;
         assert_eq!(canonical, &[("DBA36B5181D0C816F630E889D980A17457F6FB06".parse().ok(), Signed {
-            content: BString::from(b"Hash: SHA256
-
-Origin: . xenial
+            content: BString::from(b"Origin: . xenial
 Label: . xenial
 Suite: xenial
 Codename: xenial
@@ -1592,9 +1601,7 @@ EXyj
             "../contrib/debian-archive-bullseye-stable.gpg"
         ))?;
 
-        let content = b"Hash: SHA256
-
-Origin: Debian
+        let content = b"Origin: Debian
 Label: Debian
 Suite: stable
 Version: 11.6
