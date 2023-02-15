@@ -109,7 +109,11 @@ pub struct Ls {
 
 /// List all keys currently configured for monitoring
 #[derive(Debug, Parser)]
-pub struct Keyring {}
+pub struct Keyring {
+    /// Output keyring as json
+    #[arg(long)]
+    pub json: bool,
+}
 
 /// Access to low-level features
 #[derive(Debug, Subcommand)]

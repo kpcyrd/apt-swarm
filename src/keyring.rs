@@ -6,6 +6,7 @@ use memchr::memchr;
 use sequoia_openpgp::packet::Signature;
 use sequoia_openpgp::types::SignatureType;
 use sequoia_openpgp::Fingerprint;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
@@ -128,5 +129,58 @@ impl Keyring {
         }
 
         bail!("Signature could not be verified with any of the pgp certificates public keys")
+    }
+
+    pub fn generate_report(&self) -> Result<KeyringReport> {
+        Ok(KeyringReport {
+            keys: self.keys.values().map(KeyReport::generate).collect(),
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct KeyringReport {
+    pub keys: Vec<KeyReport>,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct KeyReport {
+    pub primary_fingerprint: String,
+    pub uids: Vec<String>,
+    pub subkeys: Vec<SubkeyReport>,
+}
+
+impl KeyReport {
+    pub fn generate(key: &pgp::SigningKey) -> Self {
+        KeyReport {
+            primary_fingerprint: format!("{:X}", key.fingerprint),
+            uids: key.uids.clone(),
+            subkeys: key.subkeys.iter().map(SubkeyReport::generate).collect(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct SubkeyReport {
+    pub fingerprint: String,
+    pub is_primary: bool,
+    pub for_authentication: bool,
+    pub for_certification: bool,
+    pub for_signing: bool,
+    pub for_storage_encryption: bool,
+    pub for_transport_encryption: bool,
+}
+
+impl SubkeyReport {
+    pub fn generate(key: &pgp::Subkey) -> Self {
+        SubkeyReport {
+            fingerprint: format!("{:X}", key.fingerprint),
+            is_primary: key.is_primary,
+            for_authentication: key.for_authentication,
+            for_certification: key.for_certification,
+            for_signing: key.for_signing,
+            for_storage_encryption: key.for_storage_encryption,
+            for_transport_encryption: key.for_transport_encryption,
+        }
     }
 }

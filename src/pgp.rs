@@ -5,11 +5,23 @@ use sequoia_openpgp::policy::NullPolicy;
 use sequoia_openpgp::{Cert, Fingerprint, KeyHandle, KeyID};
 
 #[derive(Debug, Clone)]
+pub struct Subkey {
+    pub fingerprint: sequoia_openpgp::Fingerprint,
+    pub is_primary: bool,
+    pub for_authentication: bool,
+    pub for_certification: bool,
+    pub for_signing: bool,
+    pub for_storage_encryption: bool,
+    pub for_transport_encryption: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct SigningKey {
     pub fingerprint: sequoia_openpgp::Fingerprint,
     pub cert: Cert,
     pub uids: Vec<String>,
     pub key_handles: Vec<(KeyHandle, Fingerprint)>,
+    pub subkeys: Vec<Subkey>,
 }
 
 impl SigningKey {
@@ -39,6 +51,7 @@ pub fn load(keyring: &[u8]) -> Result<Vec<SigningKey>> {
             cert: cert.clone(),
             uids: Vec::new(),
             key_handles: Vec::new(),
+            subkeys: Vec::new(),
         };
 
         let p = &NullPolicy::new();
@@ -47,6 +60,16 @@ pub fn load(keyring: &[u8]) -> Result<Vec<SigningKey>> {
             if key.for_signing() {
                 signing_key.register_keyhandles(key.fingerprint());
             }
+
+            signing_key.subkeys.push(Subkey {
+                fingerprint: key.fingerprint(),
+                is_primary: key.primary(),
+                for_authentication: key.for_authentication(),
+                for_certification: key.for_certification(),
+                for_signing: key.for_signing(),
+                for_storage_encryption: key.for_storage_encryption(),
+                for_transport_encryption: key.for_transport_encryption(),
+            });
         }
 
         for ua in cert.userids() {

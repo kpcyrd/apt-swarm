@@ -182,18 +182,25 @@ async fn main() -> Result<()> {
                 println!("{count}");
             }
         }
-        SubCommand::Keyring(_keyring) => {
+        SubCommand::Keyring(args) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            for key in keyring.keys.values() {
-                let hex = key.hex_fingerprint();
-                for uid in &key.uids {
-                    println!("{}  {}", hex.green(), uid);
-                }
-                for (handle, _fp) in &key.key_handles {
-                    if let KeyHandle::Fingerprint(fp) = handle {
-                        let fp = format!("Subkey {fp:X}");
-                        println!("{}  {}", hex.green(), fp.yellow());
+            if args.json {
+                let keyring = keyring.generate_report()?;
+                let keyring = serde_json::to_string_pretty(&keyring)
+                    .context("Failed to encode keyring as json")?;
+                println!("{}", keyring);
+            } else {
+                for key in keyring.keys.values() {
+                    let hex = key.hex_fingerprint();
+                    for uid in &key.uids {
+                        println!("{}  {}", hex.green(), uid);
+                    }
+                    for (handle, _fp) in &key.key_handles {
+                        if let KeyHandle::Fingerprint(fp) = handle {
+                            let fp = format!("Subkey {fp:X}");
+                            println!("{}  {}", hex.green(), fp.yellow());
+                        }
                     }
                 }
             }
