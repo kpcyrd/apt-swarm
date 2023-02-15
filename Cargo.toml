@@ -1,6 +1,11 @@
 [package]
 name = "apt-swarm"
 version = "0.1.0"
+description = "Work in progress p2p gossip network for update transparency 🥸"
+authors = ["kpcyrd <git@rxv.cc>"]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/kpcyrd/apt-swarm"
+categories = ["command-line-utilities"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
