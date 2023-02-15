@@ -1,6 +1,7 @@
 use crate::errors::*;
 use sequoia_openpgp::cert::prelude::*;
 use sequoia_openpgp::parse::{PacketParser, Parse};
+use sequoia_openpgp::policy::NullPolicy;
 use sequoia_openpgp::{Cert, Fingerprint, KeyHandle, KeyID};
 
 #[derive(Debug, Clone)]
@@ -40,8 +41,12 @@ pub fn load(keyring: &[u8]) -> Result<Vec<SigningKey>> {
             key_handles: Vec::new(),
         };
 
-        for key in cert.keys() {
-            signing_key.register_keyhandles(key.fingerprint());
+        let p = &NullPolicy::new();
+        for key in cert.keys().with_policy(p, None) {
+            // TODO: we should probably also track and display encryption-only keys, for transparency
+            if key.for_signing() {
+                signing_key.register_keyhandles(key.fingerprint());
+            }
         }
 
         for ua in cert.userids() {
