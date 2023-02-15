@@ -87,6 +87,9 @@ pub struct Import {
 #[derive(Debug, Parser)]
 pub struct Export {
     pub release_hashes: Vec<String>,
+    /// Instead of exact matches, scan with the given prefix(es)
+    #[arg(long)]
+    pub scan: bool,
 }
 
 /// Fetch the latest InRelease files and import them

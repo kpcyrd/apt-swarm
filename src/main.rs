@@ -107,11 +107,18 @@ async fn main() -> Result<()> {
                 }
             } else {
                 for hash in &export.release_hashes {
-                    let data = db
-                        .get(hash)
-                        .context("Failed to read database")?
-                        .with_context(|| anyhow!("Failed to find key in database: {hash:?}"))?;
-                    stdout.write_all(&data).await?;
+                    if export.scan {
+                        for item in db.scan_prefix(hash.as_bytes()) {
+                            let (_hash, data) = item.context("Failed to read from database")?;
+                            stdout.write_all(&data).await?;
+                        }
+                    } else {
+                        let data = db
+                            .get(hash)
+                            .context("Failed to read database")?
+                            .with_context(|| anyhow!("Failed to find key in database: {hash:?}"))?;
+                        stdout.write_all(&data).await?;
+                    }
                 }
             }
         }
