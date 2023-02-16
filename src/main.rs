@@ -25,22 +25,8 @@ async fn fetch_repository_updates(
 ) -> Result<Vec<(Option<Fingerprint>, Signed)>> {
     let mut out = Vec::new();
 
-    for url in &repository.urls {
-        info!("Fetching url {:?}...", url);
-        let r = client
-            .get(url)
-            .send()
-            .await
-            .context("Failed to send request")?
-            .error_for_status()
-            .context("Received http error")?;
-        let body = r
-            .bytes()
-            .await
-            .context("Failed to download http response")?;
-
-        let (signed, _remaining) =
-            Signed::from_bytes(&body).context("Failed to parse http response as release")?;
+    for source in &repository.urls {
+        let signed = source.fetch(client).await?;
 
         for item in signed.canonicalize(keyring)? {
             out.push(item);

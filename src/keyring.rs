@@ -7,6 +7,7 @@ use sequoia_openpgp::packet::Signature;
 use sequoia_openpgp::types::SignatureType;
 use sequoia_openpgp::Fingerprint;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
@@ -81,10 +82,8 @@ impl Keyring {
     pub fn verify(&self, data: &[u8], sig: &Signature) -> Result<Fingerprint> {
         let (signer_fp, signing_key) = self.find_signing_key(sig)?;
 
-        let body: Vec<u8> = match sig.typ() {
-            SignatureType::Binary => {
-                bail!("Signatures over binary data are not supported yet");
-            }
+        let body: Cow<[u8]> = match sig.typ() {
+            SignatureType::Binary => Cow::Borrowed(data),
             SignatureType::Text => {
                 let mut out = Vec::new();
 
@@ -105,7 +104,7 @@ impl Keyring {
                     }
                 }
 
-                out
+                Cow::Owned(out)
             }
             unsupported => bail!("Unsupported signature type: {unsupported:?}"),
         };

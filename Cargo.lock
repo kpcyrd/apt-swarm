@@ -29,6 +29,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bstr",
+ "bytes",
  "clap",
  "clap_complete",
  "colored",
