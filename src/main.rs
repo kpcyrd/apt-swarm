@@ -196,7 +196,7 @@ async fn main() -> Result<()> {
                 let keyring = keyring.generate_report()?;
                 let keyring = serde_json::to_string_pretty(&keyring)
                     .context("Failed to encode keyring as json")?;
-                println!("{}", keyring);
+                println!("{keyring}");
             } else {
                 for key in keyring.keys.values() {
                     let hex = key.hex_fingerprint();
