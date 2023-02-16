@@ -242,6 +242,15 @@ async fn main() -> Result<()> {
             let config = serde_json::to_string_pretty(&config)?;
             println!("{config}");
         }
+        SubCommand::Plumbing(Plumbing::Delete(remove)) => {
+            let config = config?;
+            let db = Database::open(&config)?;
+
+            for key in remove.keys {
+                debug!("Deleting key {:?}", key);
+                db.delete(key.as_bytes())?;
+            }
+        }
         SubCommand::Completions(completions) => {
             args::gen_completions(&completions)?;
         }

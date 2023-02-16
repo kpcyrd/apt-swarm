@@ -35,6 +35,11 @@ impl Database {
         Ok(())
     }
 
+    pub fn delete<K: AsRef<[u8]>>(&self, key: K) -> Result<()> {
+        self.sled.remove(key)?;
+        Ok(())
+    }
+
     /// This function doesn't need to be called explicitly, but calling it allows better error handling than `drop` does
     pub async fn flush(&self) -> Result<()> {
         self.sled

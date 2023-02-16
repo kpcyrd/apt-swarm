@@ -125,6 +125,7 @@ pub enum Plumbing {
     Fingerprint(Fingerprint),
     Paths(Paths),
     Config(Config),
+    Delete(Delete),
 }
 
 /// Transform a signed InRelease file into a canonical representation
@@ -151,6 +152,12 @@ pub struct Paths {}
 /// Print applied configuration
 #[derive(Debug, Parser)]
 pub struct Config {}
+
+/// Delete keys from the database
+#[derive(Debug, Parser)]
+pub struct Delete {
+    pub keys: Vec<OsString>,
+}
 
 /// Generate shell completions
 #[derive(Debug, Parser)]
