@@ -10,6 +10,7 @@ use colored::Colorize;
 use env_logger::Env;
 use sequoia_openpgp::Fingerprint;
 use sequoia_openpgp::KeyHandle;
+use sha2::{Digest, Sha256};
 use std::os::unix::ffi::OsStrExt;
 use std::sync::Arc;
 use tokio::io;
@@ -250,6 +251,25 @@ async fn main() -> Result<()> {
                 debug!("Deleting key {:?}", key);
                 db.delete(key.as_bytes())?;
             }
+        }
+        SubCommand::Plumbing(Plumbing::Index(query)) => {
+            let config = config?;
+            let db = Database::open(&config)?;
+
+            let prefix = query.prefix.as_deref().unwrap_or("");
+            let prefix = format!("{:X}/{}:{}", query.fingerprint, query.hash_algo, prefix);
+
+            let mut counter = 0;
+            let mut hasher = Sha256::new();
+            for item in db.scan_prefix(prefix.as_bytes()) {
+                let (hash, _data) = item.context("Failed to read from database")?;
+                hasher.update(&hash);
+                hasher.update(b"\n");
+                counter += 1;
+            }
+
+            let result = hasher.finalize();
+            println!("sha256:{result:x}  {counter}");
         }
         SubCommand::Completions(completions) => {
             args::gen_completions(&completions)?;

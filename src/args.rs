@@ -126,6 +126,7 @@ pub enum Plumbing {
     Paths(Paths),
     Config(Config),
     Delete(Delete),
+    Index(Index),
 }
 
 /// Transform a signed InRelease file into a canonical representation
@@ -157,6 +158,17 @@ pub struct Config {}
 #[derive(Debug, Parser)]
 pub struct Delete {
     pub keys: Vec<OsString>,
+}
+
+/// Scan the database and calculate the requested index
+#[derive(Debug, Parser)]
+pub struct Index {
+    /// The signing key to index
+    pub fingerprint: sequoia_openpgp::Fingerprint,
+    /// Only entries with this hash algorithm
+    pub hash_algo: String,
+    /// Calculate an inex based on a specific prefix
+    pub prefix: Option<String>,
 }
 
 /// Generate shell completions
