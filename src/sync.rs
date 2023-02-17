@@ -3,6 +3,7 @@ use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::signed::Signed;
 use sequoia_openpgp::Fingerprint;
+use sequoia_openpgp::KeyHandle;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::fmt;
@@ -315,7 +316,16 @@ pub async fn sync_pull<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let selected_keys = if !selected_keys.is_empty() {
         Cow::Borrowed(selected_keys)
     } else {
-        bail!("Automatically detecting fingerprints to ask for is not supported yet");
+        let mut out = Vec::new();
+        for key in keyring.keys.values() {
+            let hex = key.hex_fingerprint();
+            for (handle, _fp) in &key.key_handles {
+                if let KeyHandle::Fingerprint(fp) = handle {
+                    out.push(fp.to_owned())
+                }
+            }
+        }
+        Cow::Owned(out)
     };
 
     let mut rx = io::BufReader::new(rx);
