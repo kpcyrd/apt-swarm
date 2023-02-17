@@ -116,6 +116,9 @@ pub struct Keyring {
     /// Output keyring as json
     #[arg(long)]
     pub json: bool,
+    /// Show the number of known signatures for a given subkey
+    #[arg(short, long)]
+    pub stats: bool,
 }
 
 /// Access to low-level features

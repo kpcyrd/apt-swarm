@@ -9,6 +9,7 @@ use apt_swarm::sync;
 use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
+use num_format::{Locale, ToFormattedString};
 use sequoia_openpgp::Fingerprint;
 use sequoia_openpgp::KeyHandle;
 use sha2::{Digest, Sha256};
@@ -180,6 +181,8 @@ async fn main() -> Result<()> {
         SubCommand::Keyring(args) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
+            let db = Database::open(&config)?;
+
             if args.json {
                 let keyring = keyring.generate_report()?;
                 let keyring = serde_json::to_string_pretty(&keyring)
@@ -189,12 +192,27 @@ async fn main() -> Result<()> {
                 for key in keyring.keys.values() {
                     let hex = key.hex_fingerprint();
                     for uid in &key.uids {
-                        println!("{}  {}", hex.green(), uid);
+                        println!("{}  {}", hex.green(), uid.yellow());
                     }
                     for (handle, _fp) in &key.key_handles {
                         if let KeyHandle::Fingerprint(fp) = handle {
-                            let fp = format!("Subkey {fp:X}");
-                            println!("{}  {}", hex.green(), fp.yellow());
+                            let subkey = format!("Subkey {fp:X}");
+
+                            let stats = if args.stats {
+                                let prefix = format!("{fp:X}/");
+                                let count = db.scan_prefix(prefix.as_bytes()).count();
+                                if count > 0 {
+                                    let count = count.to_formatted_string(&Locale::en);
+                                    Some(format!("  ({count} known signatures)"))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            };
+
+                            let stats = stats.as_deref().unwrap_or("");
+                            println!("{}  {}{}", hex.green(), subkey.purple(), stats.cyan());
                         }
                     }
                 }
