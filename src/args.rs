@@ -127,6 +127,8 @@ pub enum Plumbing {
     Config(Config),
     Delete(Delete),
     Index(Index),
+    SyncYield(SyncYield),
+    SyncPull(SyncPull),
 }
 
 /// Transform a signed InRelease file into a canonical representation
@@ -169,6 +171,17 @@ pub struct Index {
     pub hash_algo: String,
     /// Calculate an inex based on a specific prefix
     pub prefix: Option<String>,
+}
+
+#[derive(Debug, Parser)]
+pub struct SyncYield {}
+
+#[derive(Debug, Parser)]
+pub struct SyncPull {
+    pub keys: Vec<sequoia_openpgp::Fingerprint>,
+    /// Run the sync but do not import
+    #[arg(short = 'n', long)]
+    pub dry_run: bool,
 }
 
 /// Generate shell completions

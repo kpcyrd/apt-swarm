@@ -5,6 +5,7 @@ use apt_swarm::errors::*;
 use apt_swarm::keyring::Keyring;
 use apt_swarm::pgp;
 use apt_swarm::signed::Signed;
+use apt_swarm::sync;
 use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
@@ -29,7 +30,7 @@ async fn fetch_repository_updates(
     for source in &repository.urls {
         let signed = source.fetch(client).await?;
 
-        for item in signed.canonicalize(keyring)? {
+        for item in signed.canonicalize(keyring.as_ref())? {
             out.push(item);
         }
     }
@@ -69,7 +70,7 @@ async fn main() -> Result<()> {
                     let (signed, remaining) =
                         Signed::from_bytes(bytes).context("Failed to parse release file")?;
 
-                    for (fp, variant) in signed.canonicalize(&keyring)? {
+                    for (fp, variant) in signed.canonicalize(keyring.as_ref())? {
                         let fp = fp.context(
                             "Signature can't be imported because the signature is unverified",
                         )?;
@@ -217,7 +218,7 @@ async fn main() -> Result<()> {
                     let (signed, remaining) =
                         Signed::from_bytes(bytes).context("Failed to parse release file")?;
 
-                    for (_fp, variant) in signed.canonicalize(&keyring)? {
+                    for (_fp, variant) in signed.canonicalize(keyring.as_ref())? {
                         let text = variant.to_clear_signed()?;
                         stdout.write_all(&text).await?;
                     }
@@ -270,6 +271,25 @@ async fn main() -> Result<()> {
 
             let result = hasher.finalize();
             println!("sha256:{result:x}  {counter}");
+        }
+        SubCommand::Plumbing(Plumbing::SyncYield(_sync_yield)) => {
+            let config = config?;
+            let db = Database::open(&config)?;
+            sync::sync_yield(&db, io::stdin(), io::stdout()).await?;
+        }
+        SubCommand::Plumbing(Plumbing::SyncPull(sync_pull)) => {
+            let config = config?;
+            let keyring = Keyring::load(&config)?;
+            let db = Database::open(&config)?;
+            sync::sync_pull(
+                &db,
+                &keyring,
+                &sync_pull.keys,
+                sync_pull.dry_run,
+                io::stdout(),
+                io::stdin(),
+            )
+            .await?;
         }
         SubCommand::Completions(completions) => {
             args::gen_completions(&completions)?;

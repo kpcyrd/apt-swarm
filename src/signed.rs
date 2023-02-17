@@ -87,7 +87,7 @@ impl Signed {
 
     pub fn canonicalize(
         &self,
-        keyring: &Option<Keyring>,
+        keyring: Option<&Keyring>,
     ) -> Result<Vec<(Option<Fingerprint>, Signed)>> {
         let mut out = Vec::new();
 
@@ -296,7 +296,7 @@ Aee63sxMlmRBCwC+QKeH
         let (signed, remaining) = Signed::from_bytes(IN_RELEASE)?;
         assert_eq!(remaining, b"");
         let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let canonical = signed.canonicalize(&Some(keyring))?;
+        let canonical = signed.canonicalize(Some(&keyring))?;
         assert_eq!(canonical, &[("DBA36B5181D0C816F630E889D980A17457F6FB06".parse().ok(), Signed {
             content: BString::from(b"Origin: . xenial
 Label: . xenial
@@ -2816,7 +2816,7 @@ SHA256:
  c9d5108699279e6cb2946d907c13655ebe8b6fce12986a4ba8b0ece0257977c1    98323 non-free/source/Sources.gz
  3f3f09477a76bf44bbd93e7efc74f55783f0841c6692d6188b91e8f58a0c7999    81280 non-free/source/Sources.xz
 ";
-        let canonical = signed.canonicalize(&Some(keyring))?;
+        let canonical = signed.canonicalize(Some(&keyring))?;
         assert_eq!(canonical.len(), 2);
         assert_eq!(
             canonical,
