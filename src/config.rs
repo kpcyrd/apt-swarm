@@ -16,10 +16,19 @@ pub struct Config {
 }
 
 impl Config {
-    pub async fn load_config_from(path: &Path) -> Result<Self> {
-        let buf = fs::read_to_string(&path).await?;
-        let config = toml::from_str(&buf)?;
+    pub fn load_config_from_str(buf: &str) -> Result<Self> {
+        let config = toml::from_str(buf)?;
         Ok(config)
+    }
+
+    pub async fn load_config_from(path: &Path) -> Result<Self> {
+        if path.to_str() == Some("#") {
+            debug!("Config loading has been explicitly disabled, using default config");
+            Ok(Config::default())
+        } else {
+            let buf = fs::read_to_string(&path).await?;
+            Self::load_config_from_str(&buf)
+        }
     }
 
     pub async fn load_with_args(args: &Args) -> Result<Self> {
@@ -28,9 +37,22 @@ impl Config {
                 .await
                 .with_context(|| anyhow!("Failed to load configuration from {:?}", path))?
         } else {
+            for path in [Self::config_path(), Ok("/etc/apt-swarm.conf".into())]
+                .into_iter()
+                .flatten()
+            {
+                match fs::read_to_string(&path).await {
+                    Ok(buf) => {
+                        debug!("Using configuration from {:?}", path);
+                        return Self::load_config_from_str(&buf);
+                    }
+                    Err(err) => {
+                        debug!("Attempt to read config from {path:?} failed: {err:#}");
+                    }
+                }
+            }
             Config::default()
         };
-
         Ok(config)
     }
 
@@ -42,7 +64,13 @@ impl Config {
 
     pub fn database_path(&self) -> Result<PathBuf> {
         let data_dir = self.apt_swarm_path()?;
-        let path = data_dir.join("db");
+        let path = data_dir.join("storage");
+        Ok(path)
+    }
+
+    pub fn config_path() -> Result<PathBuf> {
+        let config_dir = dirs::config_dir().context("Failed to detect config directory")?;
+        let path = config_dir.join("apt-swarm.conf");
         Ok(path)
     }
 }

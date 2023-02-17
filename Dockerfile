@@ -21,4 +21,5 @@ RUN --mount=type=cache,target=/var/cache/apk ln -vs /var/cache/apk /etc/apk/cach
     rm /etc/apk/cache
 # copy the binary
 COPY --from=0 /app/apt-swarm /usr/bin
+COPY contrib/apt-swarm.conf /etc
 ENTRYPOINT ["apt-swarm"]
