@@ -2,7 +2,9 @@ use apt_swarm::args::{self, Args, FileOrStdin, Plumbing, SubCommand};
 use apt_swarm::config;
 use apt_swarm::db::Database;
 use apt_swarm::errors::*;
+use apt_swarm::fetch;
 use apt_swarm::keyring::Keyring;
+use apt_swarm::p2p;
 use apt_swarm::pgp;
 use apt_swarm::signed::Signed;
 use apt_swarm::sync;
@@ -10,34 +12,12 @@ use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
 use num_format::{Locale, ToFormattedString};
-use sequoia_openpgp::Fingerprint;
 use sequoia_openpgp::KeyHandle;
 use sha2::{Digest, Sha256};
 use std::os::unix::ffi::OsStrExt;
 use std::sync::Arc;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::task::JoinSet;
-
-const DEFAULT_FETCH_CONCURRENCY: usize = 4;
-
-async fn fetch_repository_updates(
-    client: &reqwest::Client,
-    keyring: &Option<Keyring>,
-    repository: &config::Repository,
-) -> Result<Vec<(Option<Fingerprint>, Signed)>> {
-    let mut out = Vec::new();
-
-    for source in &repository.urls {
-        let signed = source.fetch(client).await?;
-
-        for item in signed.canonicalize(keyring.as_ref())? {
-            out.push(item);
-        }
-    }
-
-    Ok(out)
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -113,44 +93,11 @@ async fn main() -> Result<()> {
         }
         SubCommand::Fetch(fetch) => {
             let config = config?;
-            let keyring = Arc::new(Some(Keyring::load(&config)?));
+            let keyring = Keyring::load(&config)?;
             let db = Database::open(&config)?;
 
-            let concurrency = fetch.concurrency.unwrap_or(DEFAULT_FETCH_CONCURRENCY);
-            let mut queue = config.repositories.into_iter();
-            let mut pool = JoinSet::new();
-            let client = reqwest::Client::new();
-
-            loop {
-                while pool.len() < concurrency {
-                    if let Some(repository) = queue.next() {
-                        let client = client.clone();
-                        let keyring = keyring.clone();
-                        pool.spawn(async move {
-                            fetch_repository_updates(&client, &keyring, &repository).await
-                        });
-                    } else {
-                        // no more tasks to schedule
-                        break;
-                    }
-                }
-                if let Some(join) = pool.join_next().await {
-                    match join.context("Failed to join task")? {
-                        Ok(list) => {
-                            for (fp, variant) in list {
-                                let fp = fp.context(
-                                    "Signature can't be imported because the signature is unverified",
-                                )?;
-                                db.add_release(&fp, &variant)?;
-                            }
-                        }
-                        Err(err) => error!("Error fetching latest release: {err:#}"),
-                    }
-                } else {
-                    // no more tasks in pool
-                    break;
-                }
-            }
+            let keyring = Arc::new(Some(keyring));
+            fetch::fetch_updates(&db, keyring, fetch.concurrency, config.repositories).await?;
         }
         SubCommand::Ls(ls) => {
             let config = config?;
@@ -217,6 +164,12 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+        }
+        SubCommand::P2p(_p2p) => {
+            let config = config?;
+            let keyring = Keyring::load(&config)?;
+            let db = Database::open(&config)?;
+            p2p::spawn(&db, keyring, config.repositories).await?;
         }
         SubCommand::Plumbing(Plumbing::Canonicalize(mut canonicalize)) => {
             FileOrStdin::default_stdin(&mut canonicalize.paths);

@@ -71,6 +71,7 @@ pub enum SubCommand {
     Fetch(Fetch),
     Ls(Ls),
     Keyring(Keyring),
+    P2p(P2p),
     #[command(subcommand)]
     Plumbing(Plumbing),
     Completions(Completions),
@@ -120,6 +121,10 @@ pub struct Keyring {
     #[arg(short, long)]
     pub stats: bool,
 }
+
+/// Run in p2p swarm mode
+#[derive(Debug, Parser)]
+pub struct P2p {}
 
 /// Access to low-level features
 #[derive(Debug, Subcommand)]
