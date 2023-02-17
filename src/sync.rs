@@ -200,10 +200,6 @@ pub async fn sync_yield<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     Ok(())
 }
 
-pub async fn receive_releases<R: AsyncRead>() -> Result<()> {
-    todo!()
-}
-
 pub async fn sync_pull_key<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     db: &Database,
     keyring: &Keyring,
