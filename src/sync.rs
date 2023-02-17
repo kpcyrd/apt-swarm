@@ -318,7 +318,6 @@ pub async fn sync_pull<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     } else {
         let mut out = Vec::new();
         for key in keyring.keys.values() {
-            let hex = key.hex_fingerprint();
             for (handle, _fp) in &key.key_handles {
                 if let KeyHandle::Fingerprint(fp) = handle {
                     out.push(fp.to_owned())
