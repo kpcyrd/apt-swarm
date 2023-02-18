@@ -106,9 +106,20 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
             )
             .await?;
         }
-        Plumbing::ContainerUpdateCheck(update) => {
-            update::check(&update).await?;
-        }
+        Plumbing::ContainerUpdateCheck(update) => match update::check(&update).await? {
+            update::Updates::AlreadyLatest { commit } => {
+                info!(
+                    "We're running the latest version of {:?} (commit={:?})",
+                    update.image, commit
+                );
+            }
+            update::Updates::Available { current, latest } => {
+                info!(
+                    "We're running an outdated version of {:?} (current={:?}, latest={:?})",
+                    update.image, current, latest
+                );
+            }
+        },
         Plumbing::Completions(completions) => {
             args::gen_completions(&completions)?;
         }

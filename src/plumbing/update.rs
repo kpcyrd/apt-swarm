@@ -14,11 +14,19 @@ pub struct ContainerConfig {
     pub env: Vec<String>,
 }
 
-pub async fn check(update: &ContainerUpdateCheck) -> Result<()> {
+pub enum Updates {
+    Available { current: String, latest: String },
+    AlreadyLatest { commit: String },
+}
+
+pub async fn check(update: &ContainerUpdateCheck) -> Result<Updates> {
     debug!("Checking updates for container image: {:?}", update.image);
 
     if update.commit.is_empty() {
-        bail!("The currently running commit is not configured: {:?}", update.commit);
+        bail!(
+            "The currently running commit is not configured: {:?}",
+            update.commit
+        );
     }
 
     let output = Command::new("crane")
@@ -46,17 +54,28 @@ pub async fn check(update: &ContainerUpdateCheck) -> Result<()> {
         if let Some(commit) = env.strip_prefix("UPDATE_CHECK_COMMIT=") {
             debug!("Found commit in container image: {commit:?}");
             if commit == update.commit {
-                info!(
-                    "We're running the latest version according to {:?} (commit={:?})",
+                debug!(
+                    "Update check detected we're running the latest version of {:?} (commit={:?}",
                     update.image, commit
                 );
+                return Ok(Updates::AlreadyLatest {
+                    commit: commit.to_string(),
+                });
             } else {
-                info!(
-                    "We're running an outdated version (current={:?}, latest={:?})",
+                debug!("Update check detected we're running an outdated version of {:?} (current={:?}, latest={:?})",
+                    update.image,
                     update.commit, commit
                 );
+                return Ok(Updates::Available {
+                    current: update.commit.to_string(),
+                    latest: commit.to_string(),
+                });
             }
         }
     }
-    Ok(())
+
+    bail!(
+        "Failed to detect commit id in specified container image: {:?}",
+        update.image
+    );
 }

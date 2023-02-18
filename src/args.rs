@@ -123,7 +123,20 @@ pub struct Keyring {
 
 /// Run in p2p swarm mode
 #[derive(Debug, Parser)]
-pub struct P2p {}
+pub struct P2p {
+    /// Do not connect to irc for peer discovery
+    #[arg(long)]
+    pub no_irc: bool,
+    /// Do not actively fetch updates from the configured repositories
+    #[arg(long)]
+    pub no_fetch: bool,
+    /// Monitor a container registry for updates and terminate if an update is available
+    #[arg(long)]
+    pub check_container_updates: Option<String>,
+    /// The commit to assume for our currently running image
+    #[arg(long, env = "UPDATE_CHECK_COMMIT")]
+    pub update_assume_commit: Option<String>,
+}
 
 /// Access to low-level features
 #[derive(Debug, Subcommand)]

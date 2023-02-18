@@ -1,18 +1,26 @@
+use crate::args::{ContainerUpdateCheck, P2p};
 use crate::config::Repository;
 use crate::db::Database;
 use crate::errors::*;
 use crate::fetch;
 use crate::keyring::Keyring;
-use std::convert::Infallible;
-use std::sync::Arc;
-// use crate::fetch;
+use crate::plumbing::update;
 use futures::prelude::*;
 use irc::client::prelude::{Client, Command, Config, Response};
+use std::convert::Infallible;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::task::JoinSet;
 use tokio::time;
 
-const FETCH_INTERVAL: u64 = 60 * 15; // 15min
-const INTERVAL_JITTER: u64 = 45;
+const FETCH_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
+const INTERVAL_JITTER: Duration = Duration::from_secs(45);
+
+const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
+const UPDATE_CHECK_DEBOUNCE: Duration = Duration::from_secs(5);
+const UPDATE_SHUTDOWN_DELAY: Duration = Duration::from_secs(60 * 20); // 20min
+
+const IRC_DEBOUNCE: Duration = Duration::from_millis(250);
 
 fn random_nickname() -> String {
     let mut buf = [0u8; 3];
@@ -21,7 +29,11 @@ fn random_nickname() -> String {
     name
 }
 
-async fn spawn_irc() -> Result<Infallible> {
+async fn spawn_irc(debounce: Option<Duration>) -> Result<Infallible> {
+    if let Some(debounce) = debounce {
+        tokio::time::sleep(debounce).await;
+    }
+
     let nickname = random_nickname();
     let channel = "##apt-swarm-p2p";
 
@@ -69,7 +81,7 @@ async fn spawn_irc() -> Result<Infallible> {
 }
 
 async fn random_jitter() {
-    let jitter = fastrand::u64(..INTERVAL_JITTER * 2);
+    let jitter = fastrand::u64(..INTERVAL_JITTER.as_secs() * 2);
     time::sleep(Duration::from_secs(jitter)).await;
 }
 
@@ -79,7 +91,7 @@ async fn spawn_fetch_timer(
     repositories: Vec<Repository>,
 ) -> Result<Infallible> {
     let keyring = Arc::new(Some(keyring));
-    let mut interval = time::interval(Duration::from_secs(FETCH_INTERVAL - INTERVAL_JITTER));
+    let mut interval = time::interval(FETCH_INTERVAL - INTERVAL_JITTER);
 
     loop {
         interval.tick().await;
@@ -95,13 +107,62 @@ async fn spawn_fetch_timer(
     }
 }
 
+pub async fn spawn_update_check(image: String, commit: String) -> Result<Infallible> {
+    let mut interval = time::interval(UPDATE_CHECK_INTERVAL);
+    debug!("Delaying first update check");
+    interval.tick().await;
+    time::sleep(UPDATE_CHECK_DEBOUNCE).await;
+    let check = ContainerUpdateCheck { image, commit };
+    loop {
+        interval.tick().await;
+        match update::check(&check).await {
+            Ok(update::Updates::Available { current, latest }) => {
+                info!(
+                    "We're running an outdated version of {:?}, going to shutdown in some minutes... (current={:?}, latest={:?})",
+                    check.image, current, latest
+                );
+                time::sleep(UPDATE_SHUTDOWN_DELAY).await;
+                bail!("Sending shutdown signal to request container image update");
+            }
+            Ok(_) => (),
+            Err(err) => {
+                warn!("Update check failed: {err:#}");
+            }
+        }
+    }
+}
+
 pub async fn spawn(
-    db: &Database,
+    db: Database,
     keyring: Keyring,
+    p2p: P2p,
     repositories: Vec<Repository>,
 ) -> Result<Infallible> {
-    tokio::select! {
-        r = spawn_irc() => r,
-        r = spawn_fetch_timer(db, keyring, repositories) => r,
+    let mut set = JoinSet::new();
+
+    if !p2p.no_fetch {
+        set.spawn(async move { spawn_fetch_timer(&db, keyring, repositories).await });
     }
+
+    if let Some(image) = p2p.check_container_updates {
+        let commit = match p2p.update_assume_commit {
+            Some(s) if s.is_empty() => {
+                bail!("Update checks are configured but current commit is empty string")
+            }
+            Some(commit) => commit,
+            None => bail!("Update checks are configured but current commit is not provided"),
+        };
+        set.spawn(spawn_update_check(image, commit));
+    }
+
+    if !p2p.no_irc {
+        // briefly delay the connection, so we don't spam irc in case something crashes immediately
+        set.spawn(spawn_irc(Some(IRC_DEBOUNCE)));
+    }
+
+    let result = set
+        .join_next()
+        .await
+        .context("All features have been disabled, nothing to do")?;
+    result.context("Failed to wait for task")?
 }
