@@ -3,6 +3,8 @@
 An attempt to make a secure public p2p protocol that gossips about signed
 `InRelease` files to implement an update transparency log.
 
+![Screenshot of a keyring along with the number of known signatures](.github/keyring-screenshot.png)
+
 ## Configuring a repository to monitor
 
 To ascii armor the pgp key use this command:
