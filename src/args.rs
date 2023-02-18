@@ -74,7 +74,6 @@ pub enum SubCommand {
     P2p(P2p),
     #[command(subcommand)]
     Plumbing(Plumbing),
-    Completions(Completions),
 }
 
 /// Import signed InRelease files
@@ -137,6 +136,8 @@ pub enum Plumbing {
     Index(Index),
     SyncYield(SyncYield),
     SyncPull(SyncPull),
+    ContainerUpdateCheck(ContainerUpdateCheck),
+    Completions(Completions),
 }
 
 /// Transform a signed InRelease file into a canonical representation
@@ -191,6 +192,9 @@ pub struct SyncPull {
     #[arg(short = 'n', long)]
     pub dry_run: bool,
 }
+
+#[derive(Debug, Parser)]
+pub struct ContainerUpdateCheck {}
 
 /// Generate shell completions
 #[derive(Debug, Parser)]

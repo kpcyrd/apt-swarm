@@ -6,5 +6,6 @@ pub mod fetch;
 pub mod keyring;
 pub mod p2p;
 pub mod pgp;
+pub mod plumbing;
 pub mod signed;
 pub mod sync;
