@@ -5,6 +5,53 @@ An attempt to make a secure public p2p protocol that gossips about signed
 
 ![Screenshot of a keyring along with the number of known signatures](.github/keyring-screenshot.png)
 
+## Running a node
+
+Install dependencies (Arch Linux):
+
+```
+pacman -S podman
+```
+
+Install dependencies (Debian/Ubuntu):
+
+```
+apt-get install podman catatonit
+```
+
+Create a systemd service at `/etc/systemd/system/apt-swarm.service`:
+
+```
+cat > /etc/systemd/system/apt-swarm.service <<EOF
+[Unit]
+Description=apt-swarm p2p container
+Documentation=https://github.com/kpcyrd/apt-swarm
+
+[Service]
+ExecStart=/usr/bin/podman run --rm --pull always --init \
+	ghcr.io/kpcyrd/apt-swarm:edge p2p \
+	--check-container-updates ghcr.io/kpcyrd/apt-swarm:edge
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+EOF
+```
+
+Start the service:
+
+```
+systemctl daemon-reload
+systemctl enable --now apt-swarm
+```
+
+Watch logs:
+
+```
+journalctl -fu apt-swarm
+```
+
 ## Configuring a repository to monitor
 
 To ascii armor the pgp key use this command:

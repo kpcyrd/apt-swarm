@@ -130,11 +130,11 @@ pub struct P2p {
     /// Do not actively fetch updates from the configured repositories
     #[arg(long)]
     pub no_fetch: bool,
-    /// Monitor a container registry for updates and terminate if an update is available
-    #[arg(long)]
+    /// Monitor a container registry for updates and terminate if an update is available (eg. ghcr.io/kpcyrd/apt-swarm:edge)
+    #[arg(long, value_name="IMAGE")]
     pub check_container_updates: Option<String>,
-    /// The commit to assume for our currently running image
-    #[arg(long, env = "UPDATE_CHECK_COMMIT")]
+    /// The VCS commit to assume for our currently running image
+    #[arg(long, value_name="COMMIT", env = "UPDATE_CHECK_COMMIT")]
     pub update_assume_commit: Option<String>,
 }
 

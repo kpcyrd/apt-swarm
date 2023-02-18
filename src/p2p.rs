@@ -117,7 +117,7 @@ pub async fn spawn_update_check(image: String, commit: String) -> Result<Infalli
         interval.tick().await;
         match update::check(&check).await {
             Ok(update::Updates::Available { current, latest }) => {
-                info!(
+                warn!(
                     "We're running an outdated version of {:?}, going to shutdown in some minutes... (current={:?}, latest={:?})",
                     check.image, current, latest
                 );
@@ -160,6 +160,7 @@ pub async fn spawn(
         set.spawn(spawn_irc(Some(IRC_DEBOUNCE)));
     }
 
+    info!("Successfully p2p node...");
     let result = set
         .join_next()
         .await
