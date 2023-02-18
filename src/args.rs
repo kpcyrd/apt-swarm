@@ -194,7 +194,14 @@ pub struct SyncPull {
 }
 
 #[derive(Debug, Parser)]
-pub struct ContainerUpdateCheck {}
+pub struct ContainerUpdateCheck {
+    /// The image to monitor for updates (eg. ghcr.io/kpcyrd/apt-swarm:edge)
+    #[arg(long)]
+    pub image: String,
+    /// The commit to assume for our currently running image
+    #[arg(long, env = "UPDATE_CHECK_COMMIT")]
+    pub commit: String,
+}
 
 /// Generate shell completions
 #[derive(Debug, Parser)]

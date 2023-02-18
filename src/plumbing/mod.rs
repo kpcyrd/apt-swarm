@@ -1,3 +1,5 @@
+pub mod update;
+
 use crate::args::{self, FileOrStdin, Plumbing};
 use crate::config::Config;
 use crate::db::Database;
@@ -104,8 +106,8 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
             )
             .await?;
         }
-        Plumbing::ContainerUpdateCheck(_) => {
-            todo!()
+        Plumbing::ContainerUpdateCheck(update) => {
+            update::check(&update).await?;
         }
         Plumbing::Completions(completions) => {
             args::gen_completions(&completions)?;
