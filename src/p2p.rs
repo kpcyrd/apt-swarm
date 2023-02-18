@@ -34,6 +34,7 @@ async fn spawn_irc(debounce: Option<Duration>) -> Result<Infallible> {
         tokio::time::sleep(debounce).await;
     }
 
+    info!("Connecting to irc for peer discovery...");
     let nickname = random_nickname();
     let channel = "##apt-swarm-p2p";
 
@@ -110,7 +111,6 @@ async fn spawn_fetch_timer(
 pub async fn spawn_update_check(image: String, commit: String) -> Result<Infallible> {
     let mut interval = time::interval(UPDATE_CHECK_INTERVAL);
     debug!("Delaying first update check");
-    interval.tick().await;
     time::sleep(UPDATE_CHECK_DEBOUNCE).await;
     let check = ContainerUpdateCheck { image, commit };
     loop {
@@ -160,7 +160,7 @@ pub async fn spawn(
         set.spawn(spawn_irc(Some(IRC_DEBOUNCE)));
     }
 
-    info!("Successfully p2p node...");
+    info!("Successfully started p2p node...");
     let result = set
         .join_next()
         .await
