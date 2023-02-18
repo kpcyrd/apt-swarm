@@ -1,0 +1,25 @@
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: apt-swarm
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      name: apt-swarm
+
+  template:
+    metadata:
+      labels:
+        name: apt-swarm
+
+    spec:
+      containers:
+      - name: apt-swarm
+        image: ghcr.io/kpcyrd/apt-swarm:edge
+        args: ["p2p", "--check-container-updates", "ghcr.io/kpcyrd/apt-swarm:edge"]
+        imagePullPolicy: Always
+        # TODO: how do I configure `init: true`?
+      terminationGracePeriodSeconds: 2

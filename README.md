@@ -52,6 +52,14 @@ Watch logs:
 journalctl -fu apt-swarm
 ```
 
+## Running a node (kubernetes)
+
+```
+minikube start
+kubectl create ns apt-swarm 2>/dev/null || true
+kubectl apply -f contrib/k8s.yaml -n apt-swarm
+```
+
 ## Configuring a repository to monitor
 
 To ascii armor the pgp key use this command:
