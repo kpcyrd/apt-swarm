@@ -21,8 +21,8 @@ jobs:
         load: true
         cache-from: type=gha
         cache-to: type=gha,mode=max
-        build-args:
-          - UPDATE_CHECK_COMMIT=${{ github.sha }}
+        build-args: |
+          UPDATE_CHECK_COMMIT=${{ github.sha }}
 
     - name: Test the Docker image
       run: |
