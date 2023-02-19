@@ -31,15 +31,6 @@ impl Query {
         Ok(query)
     }
 
-    pub fn new_for_fp(fp: Fingerprint, hash_algo: String) -> Self {
-        let prefix = Some(format!("{fp:X}/{hash_algo}:"));
-        Self {
-            fp,
-            hash_algo,
-            prefix,
-        }
-    }
-
     pub async fn write_to<W: AsyncWrite + Unpin>(&self, mut tx: W) -> Result<()> {
         let mut out = format!("{:X} {}", self.fp, self.hash_algo);
         if let Some(prefix) = &self.prefix {

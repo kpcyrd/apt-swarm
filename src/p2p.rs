@@ -87,7 +87,8 @@ async fn spawn_irc(
             msg = rx.recv() => {
                 if let Some(msg) = msg {
                     debug!("Sending message to irc: {msg:?}");
-                    client.send_privmsg(channel, &msg)?;
+                    client.send_privmsg(channel, &msg)
+                        .context("Failed to send to irc")?;
                     // slowing this down slightly, just in case
                     time::sleep(Duration::from_millis(250)).await;
                 }
@@ -158,17 +159,23 @@ async fn spawn_fetch_timer(
         }
 
         for (fp, gossip) in &mut stats {
-            let query = sync::Query::new_for_fp(fp.clone(), "sha256".to_string());
+            let query = sync::Query {
+                fp: fp.clone(),
+                hash_algo: "sha256".to_string(),
+                prefix: None,
+            };
+
             match sync::index_from_scan(db, &query) {
                 Ok((idx, count)) => {
-                    if count > 0 {
-                        if gossip.needs_announcement(&idx) {
-                            let msg = format!("[sync] idx={idx} count={count}");
-                            trace!("Sending to p2p channel: {:?}", msg);
-                            // if the p2p channel crashed do not interrupt monitoring
-                            p2p_tx.try_send(msg).ok();
-                            gossip.update_announced_index(idx);
+                    debug!("Recalculated index for gossip checks: fp={fp:X} idx={idx:?} count={count:?}");
+                    if count > 0 && gossip.needs_announcement(&idx) {
+                        let msg = format!("[sync] fp={fp:X} idx={idx} count={count}");
+                        trace!("Sending to p2p channel: {:?}", msg);
+                        // if the p2p channel crashed do not interrupt monitoring
+                        if let Err(err) = p2p_tx.try_send(msg) {
+                            warn!("Failed to send to p2p channel: {err:#}");
                         }
+                        gossip.update_announced_index(idx);
                     }
                 }
                 Err(err) => {
