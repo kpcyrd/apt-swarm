@@ -9,6 +9,7 @@ use crate::pgp;
 use crate::signed::Signed;
 use crate::sync;
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::os::unix::ffi::OsStrExt;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -52,11 +53,17 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::Paths(_paths) => {
             let config = config?;
+            let config_path = if let Some(path) = &config.config_path {
+                Cow::Owned(format!("{:?}", path))
+            } else {
+                Cow::Borrowed("-")
+            };
+            println!("config path:   {}", config_path);
             println!("database path: {:?}", config.database_path()?);
         }
         Plumbing::Config(_config) => {
             let config = config?;
-            let config = serde_json::to_string_pretty(&config)?;
+            let config = serde_json::to_string_pretty(&config.data)?;
             println!("{config}");
         }
         Plumbing::Delete(remove) => {

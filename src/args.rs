@@ -60,6 +60,9 @@ pub struct Args {
     /// Path to config file to use
     #[arg(short, long, global = true)]
     pub config: Option<PathBuf>,
+    /// Configure the path where persistent data should be stored
+    #[arg(long, global = true, env = "APT_SWARM_DATA_PATH")]
+    pub data_path: Option<PathBuf>,
     #[command(subcommand)]
     pub subcommand: SubCommand,
 }

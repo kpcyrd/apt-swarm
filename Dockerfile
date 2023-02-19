@@ -22,11 +22,13 @@ FROM alpine:3.17
 # install dependencies
 RUN --mount=type=cache,target=/var/cache/apk ln -vs /var/cache/apk /etc/apk/cache && \
     apk add clang-libs libgcc nettle zstd-libs && \
-    rm /etc/apk/cache
+    rm /etc/apk/cache && \
+    mkdir /data
 COPY --from=crane /go/bin/crane /usr/bin
 # copy the binary
 COPY --from=0 /app/apt-swarm /usr/bin
 COPY contrib/apt-swarm.conf /etc
 ARG UPDATE_CHECK_COMMIT=
 ENV UPDATE_CHECK_COMMIT=$UPDATE_CHECK_COMMIT
+ENV APT_SWARM_DATA_PATH=/data
 ENTRYPOINT ["apt-swarm"]

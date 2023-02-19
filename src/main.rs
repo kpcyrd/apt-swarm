@@ -94,7 +94,7 @@ async fn main() -> Result<()> {
             let db = Database::open(&config)?;
 
             let keyring = Arc::new(Some(keyring));
-            fetch::fetch_updates(&db, keyring, fetch.concurrency, config.repositories).await?;
+            fetch::fetch_updates(&db, keyring, fetch.concurrency, config.data.repositories).await?;
         }
         SubCommand::Ls(ls) => {
             let config = config?;
@@ -166,7 +166,7 @@ async fn main() -> Result<()> {
             let config = config?;
             let keyring = Keyring::load(&config)?;
             let db = Database::open(&config)?;
-            p2p::spawn(db, keyring, p2p, config.repositories).await?;
+            p2p::spawn(db, keyring, p2p, config.data.repositories).await?;
         }
         SubCommand::Plumbing(plumbing) => plumbing::run(config, plumbing).await?,
     }

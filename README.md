@@ -29,8 +29,9 @@ Documentation=https://github.com/kpcyrd/apt-swarm
 
 [Service]
 ExecStart=/usr/bin/podman run --rm --pull always --init \
-	ghcr.io/kpcyrd/apt-swarm:edge p2p \
-	--check-container-updates ghcr.io/kpcyrd/apt-swarm:edge
+    -v /opt/apt-swarm:/data \
+    ghcr.io/kpcyrd/apt-swarm:edge p2p \
+    --check-container-updates ghcr.io/kpcyrd/apt-swarm:edge
 Restart=always
 RestartSec=10
 

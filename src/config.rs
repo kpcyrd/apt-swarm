@@ -5,60 +5,73 @@ use bstr::BString;
 use bytes::Bytes;
 use sequoia_openpgp::armor;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-#[derive(Debug, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Default)]
 pub struct Config {
-    #[serde(rename = "repository", default)]
-    pub repositories: Vec<Repository>,
+    pub data: ConfigData,
+    pub config_path: Option<PathBuf>,
+    pub data_path: Option<PathBuf>,
 }
 
 impl Config {
-    pub fn load_config_from_str(buf: &str) -> Result<Self> {
-        let config = toml::from_str(buf)?;
-        Ok(config)
-    }
-
-    pub async fn load_config_from(path: &Path) -> Result<Self> {
-        if path.to_str() == Some("#") {
-            debug!("Config loading has been explicitly disabled, using default config");
-            Ok(Config::default())
-        } else {
-            let buf = fs::read_to_string(&path).await?;
-            Self::load_config_from_str(&buf)
-        }
-    }
-
     pub async fn load_with_args(args: &Args) -> Result<Self> {
-        let config = if let Some(path) = &args.config {
-            Self::load_config_from(path)
-                .await
-                .with_context(|| anyhow!("Failed to load configuration from {:?}", path))?
+        let (config_path, data) = if let Some(path) = &args.config {
+            if path.to_str() == Some("#") {
+                debug!("Config loading has been explicitly disabled, using default config");
+                (None, ConfigData::default())
+            } else {
+                let data = ConfigData::load_config_from(path)
+                    .await
+                    .with_context(|| anyhow!("Failed to load configuration from {:?}", path))?;
+                (Some(path.to_owned()), data)
+            }
+        } else if let Some((path, buf)) = Self::find_config().await {
+            debug!("Using configuration from {:?}", path);
+            let data = ConfigData::load_config_from_str(&buf)?;
+            (Some(path), data)
         } else {
-            for path in [Self::config_path(), Ok("/etc/apt-swarm.conf".into())]
-                .into_iter()
-                .flatten()
-            {
-                match fs::read_to_string(&path).await {
-                    Ok(buf) => {
-                        debug!("Using configuration from {:?}", path);
-                        return Self::load_config_from_str(&buf);
-                    }
-                    Err(err) => {
-                        debug!("Attempt to read config from {path:?} failed: {err:#}");
-                    }
+            (None, ConfigData::default())
+        };
+
+        Ok(Config {
+            data,
+            config_path,
+            data_path: args.data_path.clone(),
+        })
+    }
+
+    async fn find_config() -> Option<(PathBuf, String)> {
+        for path in [
+            Self::default_config_path(),
+            Ok("/etc/apt-swarm.conf".into()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            match fs::read_to_string(&path).await {
+                Ok(buf) => return Some((path, buf)),
+                Err(err) => {
+                    debug!("Attempt to read config from {path:?} failed: {err:#}");
                 }
             }
-            Config::default()
-        };
-        Ok(config)
+        }
+
+        None
     }
 
-    pub fn apt_swarm_path(&self) -> Result<PathBuf> {
-        let data_dir = dirs::data_dir().context("Failed to detect data directory")?;
-        let path = data_dir.join("apt-swarm");
+    pub fn apt_swarm_path(&self) -> Result<Cow<PathBuf>> {
+        let path = if let Some(path) = &self.data_path {
+            Cow::Borrowed(path)
+        } else {
+            let data_dir = dirs::data_dir().context("Failed to detect data directory")?;
+            let path = data_dir.join("apt-swarm");
+            Cow::Owned(path)
+        };
+
         Ok(path)
     }
 
@@ -68,10 +81,28 @@ impl Config {
         Ok(path)
     }
 
-    pub fn config_path() -> Result<PathBuf> {
+    fn default_config_path() -> Result<PathBuf> {
         let config_dir = dirs::config_dir().context("Failed to detect config directory")?;
         let path = config_dir.join("apt-swarm.conf");
         Ok(path)
+    }
+}
+
+#[derive(Debug, PartialEq, Default, Serialize, Deserialize)]
+pub struct ConfigData {
+    #[serde(rename = "repository", default)]
+    pub repositories: Vec<Repository>,
+}
+
+impl ConfigData {
+    pub fn load_config_from_str(buf: &str) -> Result<Self> {
+        let config = toml::from_str(buf)?;
+        Ok(config)
+    }
+
+    pub async fn load_config_from(path: &Path) -> Result<Self> {
+        let buf = fs::read_to_string(&path).await?;
+        Self::load_config_from_str(&buf)
     }
 }
 

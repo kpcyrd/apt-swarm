@@ -25,7 +25,7 @@ pub struct Keyring {
 impl Keyring {
     pub fn load(config: &Config) -> Result<Self> {
         let mut keyring = Keyring::default();
-        for repository in &config.repositories {
+        for repository in &config.data.repositories {
             keyring.add_keyring(repository.keyring.as_bytes())?;
         }
         Ok(keyring)
