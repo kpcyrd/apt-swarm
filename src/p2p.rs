@@ -5,11 +5,14 @@ use crate::errors::*;
 use crate::fetch;
 use crate::keyring::Keyring;
 use crate::plumbing::update;
+use crate::sync;
 use futures::prelude::*;
 use irc::client::prelude::{Client, Command, Config, Response};
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time;
 
@@ -20,6 +23,8 @@ const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
 const UPDATE_CHECK_DEBOUNCE: Duration = Duration::from_secs(5);
 const UPDATE_SHUTDOWN_DELAY: Duration = Duration::from_secs(60 * 20); // 20min
 
+const GOSSIP_IDLE_ANNOUNCE_INTERVAL: Duration = Duration::from_secs(3600 * 24); // 1h, set this to 24h later
+
 const IRC_DEBOUNCE: Duration = Duration::from_millis(250);
 
 fn random_nickname() -> String {
@@ -29,7 +34,10 @@ fn random_nickname() -> String {
     name
 }
 
-async fn spawn_irc(debounce: Option<Duration>) -> Result<Infallible> {
+async fn spawn_irc(
+    debounce: Option<Duration>,
+    mut rx: mpsc::Receiver<String>,
+) -> Result<Infallible> {
     if let Some(debounce) = debounce {
         tokio::time::sleep(debounce).await;
     }
@@ -55,30 +63,37 @@ async fn spawn_irc(debounce: Option<Duration>) -> Result<Infallible> {
 
     let mut stream = client.stream().context("Failed to setup irc stream")?;
 
-    while let Some(message) = stream
-        .next()
-        .await
-        .transpose()
-        .context("Failed to read from irc stream")?
-    {
-        trace!("Received msg from irc server: {message:?}");
-        match message.command {
-            Command::PRIVMSG(target, msg) => {
-                debug!("Received irc privmsg: {:?}: {:?}", target, msg);
-                if target != channel {
-                    continue;
+    loop {
+        tokio::select! {
+            msg = stream.next() => {
+                if let Some(message) = msg.transpose().context("Failed to read from irc stream")? {
+                    trace!("Received msg from irc server: {message:?}");
+                    match message.command {
+                        Command::PRIVMSG(target, msg) => {
+                            debug!("Received irc privmsg: {:?}: {:?}", target, msg);
+                            if target != channel {
+                                continue;
+                            }
+                        }
+                        Command::Response(Response::RPL_ISUPPORT, _) => {
+                            // client.send_quit("QUIT")?;
+                        }
+                        _ => (),
+                    }
+                } else {
+                    bail!("irc client has been shutdown");
                 }
             }
-            Command::Response(Response::RPL_ISUPPORT, _) => {
-                client.send_privmsg("##apt-swarm-p2p", "ohai :3")?;
-
-                // client.send_quit("QUIT")?;
+            msg = rx.recv() => {
+                if let Some(msg) = msg {
+                    debug!("Sending message to irc: {msg:?}");
+                    client.send_privmsg(channel, &msg)?;
+                    // slowing this down slightly, just in case
+                    time::sleep(Duration::from_millis(250)).await;
+                }
             }
-            _ => (),
         }
     }
-
-    bail!("irc client has been shutdown");
 }
 
 async fn random_jitter() {
@@ -86,11 +101,47 @@ async fn random_jitter() {
     time::sleep(Duration::from_secs(jitter)).await;
 }
 
+pub struct GossipStats {
+    last_announced_index: String,
+    last_announced_at: time::Instant,
+    next_idle_announce_after: Duration,
+}
+
+impl GossipStats {
+    pub fn new(idx: String) -> Self {
+        GossipStats {
+            last_announced_index: idx,
+            last_announced_at: time::Instant::now(),
+            next_idle_announce_after: GOSSIP_IDLE_ANNOUNCE_INTERVAL,
+        }
+    }
+
+    pub fn needs_announcement(&self, idx: &str) -> bool {
+        if self.last_announced_index != idx {
+            true
+        } else {
+            let elapsed = time::Instant::now().duration_since(self.last_announced_at);
+            elapsed >= self.next_idle_announce_after
+        }
+    }
+
+    pub fn update_announced_index(&mut self, idx: String) {
+        self.last_announced_index = idx;
+        self.last_announced_at = time::Instant::now();
+    }
+}
+
 async fn spawn_fetch_timer(
     db: &Database,
     keyring: Keyring,
     repositories: Vec<Repository>,
+    p2p_tx: mpsc::Sender<String>,
 ) -> Result<Infallible> {
+    let mut stats = HashMap::new();
+    for key in keyring.all_fingerprints() {
+        stats.insert(key, GossipStats::new("TODO".to_string()));
+    }
+
     let keyring = Arc::new(Some(keyring));
     let mut interval = time::interval(FETCH_INTERVAL - INTERVAL_JITTER);
 
@@ -104,6 +155,26 @@ async fn spawn_fetch_timer(
             error!("Fetch timer has crashed: {err:#}");
         } else {
             debug!("Fetch timer has completed");
+        }
+
+        for (fp, gossip) in &mut stats {
+            let query = sync::Query::new_for_fp(fp.clone(), "sha256".to_string());
+            match sync::index_from_scan(db, &query) {
+                Ok((idx, count)) => {
+                    if count > 0 {
+                        if gossip.needs_announcement(&idx) {
+                            let msg = format!("[sync] idx={idx} count={count}");
+                            trace!("Sending to p2p channel: {:?}", msg);
+                            // if the p2p channel crashed do not interrupt monitoring
+                            p2p_tx.try_send(msg).ok();
+                            gossip.update_announced_index(idx);
+                        }
+                    }
+                }
+                Err(err) => {
+                    error!("Failed to access database: {err:#}");
+                }
+            }
         }
     }
 }
@@ -140,8 +211,10 @@ pub async fn spawn(
 ) -> Result<Infallible> {
     let mut set = JoinSet::new();
 
+    let (p2p_tx, p2p_rx) = mpsc::channel(32);
+
     if !p2p.no_fetch {
-        set.spawn(async move { spawn_fetch_timer(&db, keyring, repositories).await });
+        set.spawn(async move { spawn_fetch_timer(&db, keyring, repositories, p2p_tx).await });
     }
 
     if let Some(image) = p2p.check_container_updates {
@@ -157,7 +230,7 @@ pub async fn spawn(
 
     if !p2p.no_irc {
         // briefly delay the connection, so we don't spam irc in case something crashes immediately
-        set.spawn(spawn_irc(Some(IRC_DEBOUNCE)));
+        set.spawn(spawn_irc(Some(IRC_DEBOUNCE), p2p_rx));
     }
 
     info!("Successfully started p2p node...");

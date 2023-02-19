@@ -5,7 +5,7 @@ use crate::pgp::SigningKey;
 use memchr::memchr;
 use sequoia_openpgp::packet::Signature;
 use sequoia_openpgp::types::SignatureType;
-use sequoia_openpgp::Fingerprint;
+use sequoia_openpgp::{Fingerprint, KeyHandle};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -59,6 +59,20 @@ impl Keyring {
                 },
             );
         }
+    }
+
+    pub fn all_fingerprints(&self) -> Vec<Fingerprint> {
+        self.keys
+            .values()
+            .flat_map(|k| &k.key_handles)
+            .flat_map(|(k, _)| {
+                if let KeyHandle::Fingerprint(fp) = k {
+                    Some(fp.to_owned())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub fn find_signing_key(&self, sig: &Signature) -> Result<(&Fingerprint, &SigningKey)> {
