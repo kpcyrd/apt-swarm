@@ -1,3 +1,4 @@
+pub mod git;
 pub mod update;
 
 use crate::args::{self, FileOrStdin, Plumbing};
@@ -127,6 +128,16 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
                 );
             }
         },
+        Plumbing::GitObject(git) => {
+            for path in &git.paths {
+                let buf = path.read().await?;
+
+                let signed = git::convert(git.kind, &buf)?;
+                let normalized = signed.to_clear_signed()?;
+
+                io::stdout().write_all(&normalized).await?;
+            }
+        }
         Plumbing::Completions(completions) => {
             args::gen_completions(&completions)?;
         }

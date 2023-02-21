@@ -1,4 +1,5 @@
 use crate::errors::*;
+use crate::plumbing;
 use clap::{ArgAction, CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use std::ffi::OsString;
@@ -153,6 +154,7 @@ pub enum Plumbing {
     SyncYield(SyncYield),
     SyncPull(SyncPull),
     ContainerUpdateCheck(ContainerUpdateCheck),
+    GitObject(GitObject),
     Completions(Completions),
 }
 
@@ -198,9 +200,11 @@ pub struct Index {
     pub prefix: Option<String>,
 }
 
+/// Provide access to our signatures over stdio (use with sync-pull)
 #[derive(Debug, Parser)]
 pub struct SyncYield {}
 
+/// Fetch all available signatures over stdio (use with sync-yield)
 #[derive(Debug, Parser)]
 pub struct SyncPull {
     pub keys: Vec<sequoia_openpgp::Fingerprint>,
@@ -209,6 +213,7 @@ pub struct SyncPull {
     pub dry_run: bool,
 }
 
+/// Query a container registry for a more recent release of a given image
 #[derive(Debug, Parser)]
 pub struct ContainerUpdateCheck {
     /// The image to monitor for updates (eg. ghcr.io/kpcyrd/apt-swarm:edge)
@@ -217,6 +222,14 @@ pub struct ContainerUpdateCheck {
     /// The commit to assume for our currently running image
     #[arg(long, env = "UPDATE_CHECK_COMMIT")]
     pub commit: String,
+}
+
+/// Convert signed git objects into signature format used by apt-swarm
+#[derive(Debug, Parser)]
+pub struct GitObject {
+    pub paths: Vec<FileOrStdin>,
+    #[arg(short, long)]
+    pub kind: Option<plumbing::git::Kind>,
 }
 
 /// Generate shell completions
