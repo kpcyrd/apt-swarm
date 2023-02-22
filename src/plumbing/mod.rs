@@ -4,12 +4,12 @@ pub mod update;
 use crate::args::{self, FileOrStdin, Plumbing};
 use crate::config::Config;
 use crate::db::Database;
+use crate::db::DatabaseClient;
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::pgp;
 use crate::signed::Signed;
 use crate::sync;
-use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::os::unix::ffi::OsStrExt;
 use tokio::io;
@@ -80,20 +80,15 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
             let config = config?;
             let db = Database::open(&config)?;
 
-            let prefix = query.prefix.as_deref().unwrap_or("");
-            let prefix = format!("{:X}/{}:{}", query.fingerprint, query.hash_algo, prefix);
+            let (index, counter) = db
+                .index_from_scan(&sync::Query {
+                    fp: query.fingerprint,
+                    hash_algo: query.hash_algo,
+                    prefix: query.prefix,
+                })
+                .await?;
 
-            let mut counter = 0;
-            let mut hasher = Sha256::new();
-            for item in db.scan_prefix(prefix.as_bytes()) {
-                let (hash, _data) = item.context("Failed to read from database")?;
-                hasher.update(&hash);
-                hasher.update(b"\n");
-                counter += 1;
-            }
-
-            let result = hasher.finalize();
-            println!("sha256:{result:x}  {counter}");
+            println!("{index}  {counter}");
         }
         Plumbing::SyncYield(_sync_yield) => {
             let config = config?;

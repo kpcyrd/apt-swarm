@@ -1,6 +1,6 @@
 use crate::config;
 use crate::config::Repository;
-use crate::db::Database;
+use crate::db::DatabaseClient;
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::signed::Signed;
@@ -28,8 +28,8 @@ async fn fetch_repository_updates(
     Ok(out)
 }
 
-pub async fn fetch_updates(
-    db: &Database,
+pub async fn fetch_updates<D: DatabaseClient>(
+    db: &D,
     keyring: Arc<Option<Keyring>>,
     concurrency: Option<usize>,
     repositories: Vec<Repository>,
@@ -59,7 +59,7 @@ pub async fn fetch_updates(
                         let fp = fp.context(
                             "Signature can't be imported because the signature is unverified",
                         )?;
-                        db.add_release(&fp, &variant)?;
+                        db.add_release(&fp, &variant).await?;
                     }
                 }
                 Err(err) => error!("Error fetching latest release: {err:#}"),

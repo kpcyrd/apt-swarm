@@ -1,6 +1,7 @@
 use crate::args::{ContainerUpdateCheck, P2p};
 use crate::config::Repository;
 use crate::db::Database;
+use crate::db::DatabaseClient;
 use crate::errors::*;
 use crate::fetch;
 use crate::keyring::Keyring;
@@ -132,8 +133,8 @@ impl GossipStats {
     }
 }
 
-async fn spawn_fetch_timer(
-    db: &Database,
+async fn spawn_fetch_timer<D: DatabaseClient>(
+    db: &D,
     keyring: Keyring,
     repositories: Vec<Repository>,
     p2p_tx: mpsc::Sender<String>,
@@ -165,7 +166,7 @@ async fn spawn_fetch_timer(
                 prefix: None,
             };
 
-            match sync::index_from_scan(db, &query) {
+            match db.index_from_scan(&query).await {
                 Ok((idx, count)) => {
                     debug!("Recalculated index for gossip checks: fp={fp:X} idx={idx:?} count={count:?}");
                     if count > 0 && gossip.needs_announcement(&idx) {
