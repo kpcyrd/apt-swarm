@@ -36,3 +36,16 @@ spec:
         resources:
           requests:
             storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apt-swarm
+spec:
+  type: NodePort
+  selector:
+    name: apt-swarm
+  ports:
+    - protocol: TCP
+      port: 16169
+      targetPort: 16169

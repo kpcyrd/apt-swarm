@@ -1,6 +1,6 @@
 use crate::args::{ContainerUpdateCheck, P2p};
 use crate::config::Repository;
-use crate::db::Database;
+use crate::db::{Database, DatabaseClient, DatabaseServer, DatabaseServerClient};
 use crate::errors::*;
 use crate::fetch;
 use crate::keyring::Keyring;
@@ -10,14 +10,18 @@ use futures::prelude::*;
 use irc::client::prelude::{Client, Command, Config, Response};
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::AsyncWriteExt;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time;
 
 const FETCH_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
 const INTERVAL_JITTER: Duration = Duration::from_secs(45);
+const SYNC_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
 const UPDATE_CHECK_DEBOUNCE: Duration = Duration::from_secs(5);
@@ -132,8 +136,8 @@ impl GossipStats {
     }
 }
 
-async fn spawn_fetch_timer(
-    db: &Database,
+async fn spawn_fetch_timer<D: DatabaseClient>(
+    db: &D,
     keyring: Keyring,
     repositories: Vec<Repository>,
     p2p_tx: mpsc::Sender<String>,
@@ -165,7 +169,7 @@ async fn spawn_fetch_timer(
                 prefix: None,
             };
 
-            match sync::index_from_scan(db, &query) {
+            match db.index_from_scan(&query).await {
                 Ok((idx, count)) => {
                     debug!("Recalculated index for gossip checks: fp={fp:X} idx={idx:?} count={count:?}");
                     if count > 0 && gossip.needs_announcement(&idx) {
@@ -210,6 +214,32 @@ pub async fn spawn_update_check(image: String, commit: String) -> Result<Infalli
     }
 }
 
+pub async fn serve_sync_client(db: &DatabaseServerClient, stream: TcpStream) -> Result<()> {
+    let (rx, mut tx) = stream.into_split();
+    sync::sync_yield(db, rx, &mut tx, Some(SYNC_IDLE_TIMEOUT)).await?;
+    tx.shutdown().await?;
+    Ok(())
+}
+
+pub async fn spawn_sync_server(db: &DatabaseServerClient, addr: SocketAddr) -> Result<Infallible> {
+    let listener = TcpListener::bind(&addr).await?;
+    debug!("Listening on address: {addr:?}");
+
+    loop {
+        let (stream, src_addr) = listener.accept().await?;
+        debug!("Accepted connection from client: {:?}", src_addr);
+
+        let db = db.clone();
+        tokio::spawn(async move {
+            if let Err(err) = serve_sync_client(&db, stream).await {
+                error!("Error while serving client: {err:#}");
+            } else {
+                debug!("Client disconnected: {addr:?}");
+            }
+        });
+    }
+}
+
 pub async fn spawn(
     db: Database,
     keyring: Keyring,
@@ -218,10 +248,24 @@ pub async fn spawn(
 ) -> Result<Infallible> {
     let mut set = JoinSet::new();
 
+    let (mut db_server, db_client) = DatabaseServer::new(db);
+    set.spawn(async move {
+        db_server.run().await?;
+        bail!("Database server has terminated");
+    });
+
     let (p2p_tx, p2p_rx) = mpsc::channel(32);
 
     if !p2p.no_fetch {
-        set.spawn(async move { spawn_fetch_timer(&db, keyring, repositories, p2p_tx).await });
+        let db_client = db_client.clone();
+        set.spawn(
+            async move { spawn_fetch_timer(&db_client, keyring, repositories, p2p_tx).await },
+        );
+    }
+
+    if !p2p.no_bind {
+        let addr = p2p.bind;
+        set.spawn(async move { spawn_sync_server(&db_client, addr).await });
     }
 
     if let Some(image) = p2p.check_container_updates {

@@ -1,6 +1,7 @@
 use apt_swarm::args::{Args, FileOrStdin, SubCommand};
 use apt_swarm::config;
 use apt_swarm::db::Database;
+use apt_swarm::db::DatabaseClient;
 use apt_swarm::errors::*;
 use apt_swarm::fetch;
 use apt_swarm::keyring::Keyring;
@@ -52,7 +53,7 @@ async fn main() -> Result<()> {
                         let fp = fp.context(
                             "Signature can't be imported because the signature is unverified",
                         )?;
-                        db.add_release(&fp, &variant)?;
+                        db.add_release(&fp, &variant).await?;
                     }
 
                     bytes = remaining;

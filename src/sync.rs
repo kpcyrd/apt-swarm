@@ -1,4 +1,4 @@
-use crate::db::Database;
+use crate::db::{Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::signed::Signed;
@@ -8,13 +8,15 @@ use std::borrow::Cow;
 use std::fmt;
 use std::str;
 use std::str::FromStr;
+use std::time::Duration;
 use tokio::io;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::time;
 
 /// If the number of entries is greater than zero, but <= this threshold, send a dump instead of an index
 pub const SPILL_THRESHOLD: usize = 1;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Query {
     pub fp: Fingerprint,
     pub hash_algo: String,
@@ -163,29 +165,41 @@ pub fn index_from_scan(db: &Database, query: &Query) -> Result<(String, usize)> 
     Ok((format!("sha256:{result:x}"), counter))
 }
 
-pub async fn sync_yield<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
-    db: &Database,
+pub async fn sync_yield<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+    db: &D,
     rx: R,
     mut tx: W,
+    timeout: Option<Duration>,
 ) -> Result<()> {
     let mut rx = io::BufReader::new(rx);
     loop {
         let mut line = Vec::new();
-        let n = rx.read_until(b'\n', &mut line).await?;
+        let read = rx.read_until(b'\n', &mut line);
+
+        let n = if let Some(timeout) = timeout {
+            if let Ok(n) = time::timeout(timeout, read).await {
+                n
+            } else {
+                break;
+            }
+        } else {
+            read.await
+        }?;
+
         if n == 0 {
             break;
         }
 
         let query = Query::from_bytes(&line)?;
         trace!("Received query: {:?}", query);
-        let (index, count) = index_from_scan(db, &query)?;
+        let (index, count) = db.index_from_scan(&query).await?;
         debug!("Calculated index: {index:?}");
 
         if count > 0 && count <= SPILL_THRESHOLD {
             let prefix = query.to_string();
             debug!("Scanning with prefix: {:?}", prefix);
-            for item in db.scan_prefix(prefix.as_bytes()) {
-                let (hash, data) = item.context("Failed to read from database")?;
+            for hash in db.scan_keys(prefix.as_bytes()).await? {
+                let data = db.get_value(&hash).await?;
                 trace!("Sending data packet to client: {:?}", hash);
                 tx.write_all(format!(":{:x}\n", data.len()).as_bytes())
                     .await?;
@@ -200,8 +214,8 @@ pub async fn sync_yield<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     Ok(())
 }
 
-pub async fn sync_pull_key<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
-    db: &Database,
+pub async fn sync_pull_key<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+    db: &D,
     keyring: &Keyring,
     fp: &Fingerprint,
     dry_run: bool,
@@ -223,7 +237,7 @@ pub async fn sync_pull_key<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
         info!("Requesting index for: {:?}", query.to_string());
         query.write_to(&mut tx).await?;
 
-        let (our_index, _our_count) = index_from_scan(db, &query)?;
+        let (our_index, _our_count) = db.index_from_scan(&query).await?;
         trace!("Our index: {our_index:?}");
 
         loop {
@@ -269,7 +283,7 @@ pub async fn sync_pull_key<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
                         if dry_run {
                             debug!("Skipping insert due to dry-run");
                         } else {
-                            db.add_release(&fp, &variant)?;
+                            db.add_release(&fp, &variant).await?;
                         }
                     }
 
@@ -304,8 +318,8 @@ pub async fn sync_pull_key<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     Ok(())
 }
 
-pub async fn sync_pull<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
-    db: &Database,
+pub async fn sync_pull<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+    db: &D,
     keyring: &Keyring,
     selected_keys: &[Fingerprint],
     dry_run: bool,
