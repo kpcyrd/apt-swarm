@@ -32,14 +32,17 @@ impl Signed {
                 break;
             }
         }
-        let content_start = bytes;
 
+        let mut content = Vec::new();
         while !bytes.starts_with(b"-----BEGIN PGP SIGNATURE-----\n") {
             let pos = 1 + memchr(b'\n', bytes).context("Failed to find end of signed message")?;
+
+            let line = &bytes[..pos];
+            let line = line.strip_prefix(b"- ").unwrap_or(line);
+            content.extend(line);
+
             bytes = &bytes[pos..];
         }
-
-        let content = content_start[..content_start.len() - bytes.len()].to_vec();
 
         let signature_start = bytes;
         let remaining = {
@@ -76,7 +79,23 @@ impl Signed {
     pub fn to_clear_signed(&self) -> Result<Vec<u8>> {
         let mut out = Vec::new();
         out.extend(b"-----BEGIN PGP SIGNED MESSAGE-----\n\n");
-        out.extend(self.content.as_slice());
+
+        let mut bytes = self.content.as_slice();
+        while let Some(mut pos) = memchr(b'\n', bytes) {
+            pos += 1;
+
+            let line = &bytes[..pos];
+            if line.starts_with(b"-") {
+                out.extend(b"- ");
+            }
+
+            out.extend(line);
+            bytes = &bytes[pos..];
+        }
+
+        if !bytes.is_empty() {
+            bail!("Message didn't end with \\n and that's currently not supported");
+        }
 
         let mut writer = armor::Writer::new(&mut out, armor::Kind::Signature)?;
         writer.write_all(&self.signature)?;
@@ -2916,6 +2935,54 @@ SHA256:
                 )
             ]
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_dash_escape_and_binary_safety() -> Result<()> {
+        let mut buf = vec![];
+        for x in 0..=255 {
+            buf.push(x);
+            buf.push(b'\n');
+        }
+
+        let signed = Signed {
+            content: buf.into(),
+            signature: vec![1],
+        };
+
+        let txt = signed.to_clear_signed()?;
+        assert_eq!(
+            txt,
+            b"-----BEGIN PGP SIGNED MESSAGE-----
+
+\x00\n\x01\n\x02\n\x03\n\x04\n\x05\n\x06\n\x07\n\x08\n\x09\n\x0a\n\x0b\n\x0c\n\x0d\n\x0e\n\x0f
+\x10\n\x11\n\x12\n\x13\n\x14\n\x15\n\x16\n\x17\n\x18\n\x19\n\x1a\n\x1b\n\x1c\n\x1d\n\x1e\n\x1f
+\x20\n\x21\n\x22\n\x23\n\x24\n\x25\n\x26\n\x27\n\x28\n\x29\n\x2a\n\x2b\n\x2c\n\x2d \x2d\n\x2e\n\x2f
+\x30\n\x31\n\x32\n\x33\n\x34\n\x35\n\x36\n\x37\n\x38\n\x39\n\x3a\n\x3b\n\x3c\n\x3d\n\x3e\n\x3f
+\x40\n\x41\n\x42\n\x43\n\x44\n\x45\n\x46\n\x47\n\x48\n\x49\n\x4a\n\x4b\n\x4c\n\x4d\n\x4e\n\x4f
+\x50\n\x51\n\x52\n\x53\n\x54\n\x55\n\x56\n\x57\n\x58\n\x59\n\x5a\n\x5b\n\x5c\n\x5d\n\x5e\n\x5f
+\x60\n\x61\n\x62\n\x63\n\x64\n\x65\n\x66\n\x67\n\x68\n\x69\n\x6a\n\x6b\n\x6c\n\x6d\n\x6e\n\x6f
+\x70\n\x71\n\x72\n\x73\n\x74\n\x75\n\x76\n\x77\n\x78\n\x79\n\x7a\n\x7b\n\x7c\n\x7d\n\x7e\n\x7f
+\x80\n\x81\n\x82\n\x83\n\x84\n\x85\n\x86\n\x87\n\x88\n\x89\n\x8a\n\x8b\n\x8c\n\x8d\n\x8e\n\x8f
+\x90\n\x91\n\x92\n\x93\n\x94\n\x95\n\x96\n\x97\n\x98\n\x99\n\x9a\n\x9b\n\x9c\n\x9d\n\x9e\n\x9f
+\xa0\n\xa1\n\xa2\n\xa3\n\xa4\n\xa5\n\xa6\n\xa7\n\xa8\n\xa9\n\xaa\n\xab\n\xac\n\xad\n\xae\n\xaf
+\xb0\n\xb1\n\xb2\n\xb3\n\xb4\n\xb5\n\xb6\n\xb7\n\xb8\n\xb9\n\xba\n\xbb\n\xbc\n\xbd\n\xbe\n\xbf
+\xc0\n\xc1\n\xc2\n\xc3\n\xc4\n\xc5\n\xc6\n\xc7\n\xc8\n\xc9\n\xca\n\xcb\n\xcc\n\xcd\n\xce\n\xcf
+\xd0\n\xd1\n\xd2\n\xd3\n\xd4\n\xd5\n\xd6\n\xd7\n\xd8\n\xd9\n\xda\n\xdb\n\xdc\n\xdd\n\xde\n\xdf
+\xe0\n\xe1\n\xe2\n\xe3\n\xe4\n\xe5\n\xe6\n\xe7\n\xe8\n\xe9\n\xea\n\xeb\n\xec\n\xed\n\xee\n\xef
+\xf0\n\xf1\n\xf2\n\xf3\n\xf4\n\xf5\n\xf6\n\xf7\n\xf8\n\xf9\n\xfa\n\xfb\n\xfc\n\xfd\n\xfe\n\xff
+-----BEGIN PGP SIGNATURE-----
+
+AQ==
+=5yUo
+-----END PGP SIGNATURE-----
+"
+        );
+
+        let (signed2, _) = Signed::from_bytes(&txt)?;
+        assert_eq!(signed, signed2);
 
         Ok(())
     }
