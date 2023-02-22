@@ -13,6 +13,7 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -20,6 +21,7 @@ use tokio::time;
 
 const FETCH_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
 const INTERVAL_JITTER: Duration = Duration::from_secs(45);
+const SYNC_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
 const UPDATE_CHECK_DEBOUNCE: Duration = Duration::from_secs(5);
@@ -213,8 +215,9 @@ pub async fn spawn_update_check(image: String, commit: String) -> Result<Infalli
 }
 
 pub async fn serve_sync_client(db: &DatabaseServerClient, stream: TcpStream) -> Result<()> {
-    let (rx, tx) = stream.into_split();
-    sync::sync_yield(db, rx, tx).await?;
+    let (rx, mut tx) = stream.into_split();
+    sync::sync_yield(db, rx, &mut tx, Some(SYNC_IDLE_TIMEOUT)).await?;
+    tx.shutdown().await?;
     Ok(())
 }
 
@@ -230,6 +233,8 @@ pub async fn spawn_sync_server(db: &DatabaseServerClient, addr: SocketAddr) -> R
         tokio::spawn(async move {
             if let Err(err) = serve_sync_client(&db, stream).await {
                 error!("Error while serving client: {err:#}");
+            } else {
+                debug!("Client disconnected: {addr:?}");
             }
         });
     }

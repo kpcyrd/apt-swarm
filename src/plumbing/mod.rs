@@ -92,7 +92,7 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         Plumbing::SyncYield(_sync_yield) => {
             let config = config?;
             let db = Database::open(&config)?;
-            sync::sync_yield(&db, io::stdin(), io::stdout()).await?;
+            sync::sync_yield(&db, io::stdin(), io::stdout(), None).await?;
         }
         Plumbing::SyncPull(sync_pull) => {
             let config = config?;

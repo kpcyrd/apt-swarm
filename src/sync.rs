@@ -8,8 +8,10 @@ use std::borrow::Cow;
 use std::fmt;
 use std::str;
 use std::str::FromStr;
+use std::time::Duration;
 use tokio::io;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::time;
 
 /// If the number of entries is greater than zero, but <= this threshold, send a dump instead of an index
 pub const SPILL_THRESHOLD: usize = 1;
@@ -167,11 +169,23 @@ pub async fn sync_yield<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrite +
     db: &D,
     rx: R,
     mut tx: W,
+    timeout: Option<Duration>,
 ) -> Result<()> {
     let mut rx = io::BufReader::new(rx);
     loop {
         let mut line = Vec::new();
-        let n = rx.read_until(b'\n', &mut line).await?;
+        let read = rx.read_until(b'\n', &mut line);
+
+        let n = if let Some(timeout) = timeout {
+            if let Ok(n) = time::timeout(timeout, read).await {
+                n
+            } else {
+                break;
+            }
+        } else {
+            read.await
+        }?;
+
         if n == 0 {
             break;
         }
