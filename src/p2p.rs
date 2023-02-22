@@ -2,6 +2,7 @@ use crate::args::{ContainerUpdateCheck, P2p};
 use crate::config::Repository;
 use crate::db::Database;
 use crate::db::DatabaseClient;
+use crate::db::DatabaseServer;
 use crate::errors::*;
 use crate::fetch;
 use crate::keyring::Keyring;
@@ -219,10 +220,18 @@ pub async fn spawn(
 ) -> Result<Infallible> {
     let mut set = JoinSet::new();
 
+    let (mut db_server, db_client) = DatabaseServer::new(db);
+    set.spawn(async move {
+        db_server.run().await?;
+        bail!("Database server has terminated");
+    });
+
     let (p2p_tx, p2p_rx) = mpsc::channel(32);
 
     if !p2p.no_fetch {
-        set.spawn(async move { spawn_fetch_timer(&db, keyring, repositories, p2p_tx).await });
+        set.spawn(
+            async move { spawn_fetch_timer(&db_client, keyring, repositories, p2p_tx).await },
+        );
     }
 
     if let Some(image) = p2p.check_container_updates {

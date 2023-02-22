@@ -14,7 +14,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWrite
 /// If the number of entries is greater than zero, but <= this threshold, send a dump instead of an index
 pub const SPILL_THRESHOLD: usize = 1;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Query {
     pub fp: Fingerprint,
     pub hash_algo: String,
