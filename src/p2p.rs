@@ -1,8 +1,6 @@
 use crate::args::{ContainerUpdateCheck, P2p};
 use crate::config::Repository;
-use crate::db::Database;
-use crate::db::DatabaseClient;
-use crate::db::DatabaseServer;
+use crate::db::{Database, DatabaseClient, DatabaseServer, DatabaseServerClient};
 use crate::errors::*;
 use crate::fetch;
 use crate::keyring::Keyring;
@@ -12,8 +10,10 @@ use futures::prelude::*;
 use irc::client::prelude::{Client, Command, Config, Response};
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::time;
@@ -212,6 +212,29 @@ pub async fn spawn_update_check(image: String, commit: String) -> Result<Infalli
     }
 }
 
+pub async fn serve_sync_client(db: &DatabaseServerClient, stream: TcpStream) -> Result<()> {
+    let (rx, tx) = stream.into_split();
+    sync::sync_yield(db, rx, tx).await?;
+    Ok(())
+}
+
+pub async fn spawn_sync_server(db: &DatabaseServerClient, addr: SocketAddr) -> Result<Infallible> {
+    let listener = TcpListener::bind(&addr).await?;
+    debug!("Listening on address: {addr:?}");
+
+    loop {
+        let (stream, src_addr) = listener.accept().await?;
+        debug!("Accepted connection from client: {:?}", src_addr);
+
+        let db = db.clone();
+        tokio::spawn(async move {
+            if let Err(err) = serve_sync_client(&db, stream).await {
+                error!("Error while serving client: {err:#}");
+            }
+        });
+    }
+}
+
 pub async fn spawn(
     db: Database,
     keyring: Keyring,
@@ -229,9 +252,15 @@ pub async fn spawn(
     let (p2p_tx, p2p_rx) = mpsc::channel(32);
 
     if !p2p.no_fetch {
+        let db_client = db_client.clone();
         set.spawn(
             async move { spawn_fetch_timer(&db_client, keyring, repositories, p2p_tx).await },
         );
+    }
+
+    if !p2p.no_bind {
+        let addr = p2p.bind;
+        set.spawn(async move { spawn_sync_server(&db_client, addr).await });
     }
 
     if let Some(image) = p2p.check_container_updates {

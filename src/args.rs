@@ -4,6 +4,7 @@ use clap::{ArgAction, CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use std::ffi::OsString;
 use std::io::stdout;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use tokio::fs;
 use tokio::io;
@@ -134,6 +135,12 @@ pub struct P2p {
     /// Do not actively fetch updates from the configured repositories
     #[arg(long)]
     pub no_fetch: bool,
+    /// Do not bind a sync port for p2p traffic
+    #[arg(long)]
+    pub no_bind: bool,
+    /// The address to bind a sync port for p2p traffic (if not disabled)
+    #[arg(short = 'B', long, default_value = "[::]:16169")]
+    pub bind: SocketAddr,
     /// Monitor a container registry for updates and terminate if an update is available (eg. ghcr.io/kpcyrd/apt-swarm:edge)
     #[arg(long, value_name = "IMAGE")]
     pub check_container_updates: Option<String>,

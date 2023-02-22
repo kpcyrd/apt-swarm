@@ -3,8 +3,7 @@ pub mod update;
 
 use crate::args::{self, FileOrStdin, Plumbing};
 use crate::config::Config;
-use crate::db::Database;
-use crate::db::DatabaseClient;
+use crate::db::{Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::pgp;
