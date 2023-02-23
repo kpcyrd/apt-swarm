@@ -162,6 +162,7 @@ pub enum Plumbing {
     SyncPull(SyncPull),
     ContainerUpdateCheck(ContainerUpdateCheck),
     GitObject(GitObject),
+    GitScrape(GitScrape),
     Completions(Completions),
 }
 
@@ -237,6 +238,12 @@ pub struct GitObject {
     pub paths: Vec<FileOrStdin>,
     #[arg(short, long)]
     pub kind: Option<plumbing::git::Kind>,
+}
+
+/// Attempt to export all signed objects from a git repo
+#[derive(Debug, Parser)]
+pub struct GitScrape {
+    pub paths: Vec<PathBuf>,
 }
 
 /// Generate shell completions

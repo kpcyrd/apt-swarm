@@ -9,6 +9,7 @@ use crate::keyring::Keyring;
 use crate::pgp;
 use crate::signed::Signed;
 use crate::sync;
+use gix::object::Kind;
 use std::borrow::Cow;
 use std::os::unix::ffi::OsStrExt;
 use tokio::io;
@@ -130,6 +131,41 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
                 let normalized = signed.to_clear_signed()?;
 
                 io::stdout().write_all(&normalized).await?;
+            }
+        }
+        Plumbing::GitScrape(git) => {
+            let mut stdout = io::stdout();
+
+            for path in git.paths {
+                info!("Opening git repository: {:?}", path);
+                let repo = gix::open(&path)
+                    .with_context(|| anyhow!("Failed to open git repo: {:?}", path))?;
+
+                for obj in repo.objects.iter()? {
+                    let obj = obj.context("Failed to read git object list")?;
+
+                    trace!("Accessing git object: {}", obj);
+                    let obj = repo
+                        .find_object(obj)
+                        .context("Failed to access git object")?;
+
+                    let Ok(signed) = (match obj.kind {
+                        Kind::Commit => {
+                            trace!("Found git commit: {:?}", obj);
+                            git::convert(Some(git::Kind::Commit), &obj.data)
+                        }
+                        Kind::Tag => {
+                            trace!("Found git tag: {:?}", obj);
+                            git::convert(Some(git::Kind::Tag), &obj.data)
+                        }
+                        _ => continue,
+                    }) else { continue };
+
+                    debug!("Found signed git object: {:?}", obj.id);
+                    let normalized = signed.to_clear_signed()?;
+
+                    stdout.write_all(&normalized).await?;
+                }
             }
         }
         Plumbing::Completions(completions) => {
