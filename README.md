@@ -31,6 +31,7 @@ Documentation=https://github.com/kpcyrd/apt-swarm
 ExecStartPre=-/usr/bin/mkdir -p /opt/apt-swarm
 ExecStart=/usr/bin/podman run --rm --pull always --init \
     -v /opt/apt-swarm:/data \
+    -p 16169:16169 \
     ghcr.io/kpcyrd/apt-swarm:edge p2p \
     --check-container-updates ghcr.io/kpcyrd/apt-swarm:edge
 Restart=always
