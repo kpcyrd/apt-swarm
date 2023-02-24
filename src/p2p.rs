@@ -142,6 +142,7 @@ async fn spawn_fetch_timer<D: DatabaseClient>(
     db: &D,
     keyring: Keyring,
     repositories: Vec<Repository>,
+    announce_addrs: Vec<SocketAddr>,
     p2p_tx: mpsc::Sender<String>,
 ) -> Result<Infallible> {
     let mut stats = HashMap::new();
@@ -175,7 +176,12 @@ async fn spawn_fetch_timer<D: DatabaseClient>(
                 Ok((idx, count)) => {
                     debug!("Recalculated index for gossip checks: fp={fp:X} idx={idx:?} count={count:?}");
                     if count > 0 && gossip.needs_announcement(&idx) {
-                        let msg = format!("[sync] fp={fp:X} idx={idx} count={count}");
+                        let mut msg = format!("[sync] fp={fp:X} idx={idx} count={count}");
+
+                        for addr in &announce_addrs {
+                            msg += &format!(" addr={addr}");
+                        }
+
                         trace!("Sending to p2p channel: {:?}", msg);
                         // if the p2p channel crashed do not interrupt monitoring
                         if let Err(err) = p2p_tx.try_send(msg) {
@@ -283,7 +289,7 @@ pub async fn spawn(
 
     if !p2p.no_fetch {
         set.spawn(
-            async move { spawn_fetch_timer(&db_client, keyring, repositories, p2p_tx).await },
+            async move { spawn_fetch_timer(&db_client, keyring, repositories, p2p.announce, p2p_tx).await },
         );
     }
 

@@ -141,6 +141,9 @@ pub struct P2p {
     /// The addresses to bind a sync port for p2p traffic (if not disabled)
     #[arg(short = 'B', long, default_values = &["0.0.0.0:16169", "[::]:16169"])]
     pub bind: Vec<SocketAddr>,
+    /// Configure addresses to announce if somebody wants to sync from us
+    #[arg(long)]
+    pub announce: Vec<SocketAddr>,
     /// Monitor a container registry for updates and terminate if an update is available (eg. ghcr.io/kpcyrd/apt-swarm:edge)
     #[arg(long, value_name = "IMAGE")]
     pub check_container_updates: Option<String>,
