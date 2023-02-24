@@ -271,10 +271,15 @@ pub async fn spawn(
                 SocketAddr::V4(_) => Socket::new(Domain::IPV4, Type::STREAM, None)?,
                 SocketAddr::V6(_) => {
                     let socket = Socket::new(Domain::IPV6, Type::STREAM, None)?;
-                    socket.set_only_v6(true)?;
+                    socket
+                        .set_only_v6(true)
+                        .context("Failed to set port to ipv6-only")?;
                     socket
                 }
             };
+            socket
+                .set_nonblocking(true)
+                .context("Failed to set port to non-blocking")?;
             let socket = TcpSocket::from_std_stream(socket.into());
 
             socket
@@ -288,9 +293,9 @@ pub async fn spawn(
     }
 
     if !p2p.no_fetch {
-        set.spawn(
-            async move { spawn_fetch_timer(&db_client, keyring, repositories, p2p.announce, p2p_tx).await },
-        );
+        set.spawn(async move {
+            spawn_fetch_timer(&db_client, keyring, repositories, p2p.announce, p2p_tx).await
+        });
     }
 
     if let Some(image) = p2p.check_container_updates {
