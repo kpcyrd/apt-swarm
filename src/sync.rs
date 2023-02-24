@@ -6,12 +6,16 @@ use sequoia_openpgp::Fingerprint;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::fmt;
+use std::net::SocketAddr;
 use std::str;
 use std::str::FromStr;
 use std::time::Duration;
 use tokio::io;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::TcpStream;
 use tokio::time;
+
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// If the number of entries is greater than zero, but <= this threshold, send a dump instead of an index
 pub const SPILL_THRESHOLD: usize = 1;
@@ -147,6 +151,15 @@ impl FromStr for Response {
             count,
         })
     }
+}
+
+pub async fn connect(addr: SocketAddr) -> Result<TcpStream> {
+    let sock = TcpStream::connect(&addr);
+    let sock = time::timeout(CONNECT_TIMEOUT, sock)
+        .await
+        .with_context(|| anyhow!("Connecting to {:?} timed out", addr))?
+        .with_context(|| anyhow!("Failed to connect to {:?}", addr))?;
+    Ok(sock)
 }
 
 pub fn index_from_scan(db: &Database, query: &Query) -> Result<(String, usize)> {

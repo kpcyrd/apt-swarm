@@ -8,6 +8,7 @@ use apt_swarm::keyring::Keyring;
 use apt_swarm::p2p;
 use apt_swarm::plumbing;
 use apt_swarm::signed::Signed;
+use apt_swarm::sync;
 use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
@@ -162,6 +163,20 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+        }
+        SubCommand::Pull(pull) => {
+            let config = config?;
+            let keyring = Keyring::load(&config)?;
+            let db = Database::open(&config)?;
+
+            let mut sock = sync::connect(pull.addr).await?;
+            let (rx, mut tx) = sock.split();
+
+            let result =
+                sync::sync_pull(&db, &keyring, &pull.keys, pull.dry_run, &mut tx, rx).await;
+
+            tx.shutdown().await.ok();
+            result?;
         }
         SubCommand::P2p(p2p) => {
             let config = config?;

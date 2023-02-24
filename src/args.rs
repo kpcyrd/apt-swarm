@@ -76,6 +76,7 @@ pub enum SubCommand {
     Fetch(Fetch),
     Ls(Ls),
     Keyring(Keyring),
+    Pull(Pull),
     P2p(P2p),
     #[command(subcommand)]
     Plumbing(Plumbing),
@@ -124,6 +125,19 @@ pub struct Keyring {
     /// Show the number of known signatures for a given subkey
     #[arg(short, long)]
     pub stats: bool,
+}
+
+/// Connect to a remote node and sync from them
+#[derive(Debug, Parser)]
+pub struct Pull {
+    /// The address to connect to
+    pub addr: SocketAddr,
+    /// Only sync data for specific keys, identified by their fingerprint
+    #[arg(long = "key")]
+    pub keys: Vec<sequoia_openpgp::Fingerprint>,
+    /// Run the sync but do not import
+    #[arg(short = 'n', long)]
+    pub dry_run: bool,
 }
 
 /// Run in p2p swarm mode
