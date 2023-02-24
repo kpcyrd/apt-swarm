@@ -216,8 +216,8 @@ pub async fn spawn_update_check(image: String, commit: String) -> Result<Infalli
     }
 }
 
-pub async fn serve_sync_client(db: &DatabaseServerClient, stream: TcpStream) -> Result<()> {
-    let (rx, mut tx) = stream.into_split();
+pub async fn serve_sync_client(db: &DatabaseServerClient, mut stream: TcpStream) -> Result<()> {
+    let (rx, mut tx) = stream.split();
     sync::sync_yield(db, rx, &mut tx, Some(SYNC_IDLE_TIMEOUT)).await?;
     tx.shutdown().await?;
     Ok(())
