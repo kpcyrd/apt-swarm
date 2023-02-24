@@ -138,9 +138,9 @@ pub struct P2p {
     /// Do not bind a sync port for p2p traffic
     #[arg(long)]
     pub no_bind: bool,
-    /// The address to bind a sync port for p2p traffic (if not disabled)
-    #[arg(short = 'B', long, default_value = "[::]:16169")]
-    pub bind: SocketAddr,
+    /// The addresses to bind a sync port for p2p traffic (if not disabled)
+    #[arg(short = 'B', long, default_values = &["0.0.0.0:16169", "[::]:16169"])]
+    pub bind: Vec<SocketAddr>,
     /// Monitor a container registry for updates and terminate if an update is available (eg. ghcr.io/kpcyrd/apt-swarm:edge)
     #[arg(long, value_name = "IMAGE")]
     pub check_container_updates: Option<String>,
