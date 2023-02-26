@@ -16,7 +16,8 @@ use tokio::net::TcpStream;
 use tokio::time;
 
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-pub const INDEX_RESPONSE_TIMEOUT: Duration = Duration::from_secs(120);
+pub const SYNC_INDEX_TIMEOUT: Duration = Duration::from_secs(120);
+pub const SYNC_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// If the number of entries is greater than zero, but <= this threshold, send a dump instead of an index
 pub const SPILL_THRESHOLD: usize = 1;
@@ -257,9 +258,9 @@ pub async fn sync_pull_key<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrit
         loop {
             let mut line = Vec::new();
 
-            let read = rx
-                .read_until(b'\n', &mut line);
-            let n = time::timeout(INDEX_RESPONSE_TIMEOUT, read).await
+            let read = rx.read_until(b'\n', &mut line);
+            let n = time::timeout(SYNC_INDEX_TIMEOUT, read)
+                .await
                 .context("Request for index timed out")?
                 .context("Failed to receive response from peer")?;
 
@@ -284,8 +285,24 @@ pub async fn sync_pull_key<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrit
 
                 // TODO: check this tag doesn't OOM us
                 info!("Reading data packet from remote: {len:?} bytes");
+
+                let mut remaining = len;
                 let mut buf = vec![0u8; len];
-                rx.read_exact(&mut buf).await?;
+                while remaining > 0 {
+                    let read = rx.read(&mut buf[len - remaining..]);
+
+                    let n = time::timeout(SYNC_READ_TIMEOUT, read)
+                        .await
+                        .context("Read from remote timed out")?
+                        .context("Failed to receive data from peer")?;
+
+                    if n == 0 {
+                        bail!("Unexpected end of file");
+                    }
+
+                    remaining -= n;
+                    trace!("Read {}/{} bytes from remote", len - remaining, len);
+                }
                 trace!("Finished reading data packet: {:?}", buf.len());
 
                 let mut bytes = &buf[..];
