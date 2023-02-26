@@ -16,6 +16,7 @@ use tokio::net::TcpStream;
 use tokio::time;
 
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+pub const INDEX_RESPONSE_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// If the number of entries is greater than zero, but <= this threshold, send a dump instead of an index
 pub const SPILL_THRESHOLD: usize = 1;
@@ -255,10 +256,13 @@ pub async fn sync_pull_key<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrit
 
         loop {
             let mut line = Vec::new();
-            let n = rx
-                .read_until(b'\n', &mut line)
-                .await
-                .context("Failed to read response")?;
+
+            let read = rx
+                .read_until(b'\n', &mut line);
+            let n = time::timeout(INDEX_RESPONSE_TIMEOUT, read).await
+                .context("Request for index timed out")?
+                .context("Failed to receive response from peer")?;
+
             if n == 0 {
                 bail!("Reached unexpected eof while enumerating service");
             }
