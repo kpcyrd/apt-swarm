@@ -5,6 +5,7 @@ use crate::sync;
 use async_trait::async_trait;
 use sequoia_openpgp::Fingerprint;
 use sha2::{Digest, Sha256};
+use std::path::Path;
 use tokio::sync::mpsc;
 
 #[async_trait]
@@ -61,9 +62,13 @@ impl DatabaseClient for Database {
 impl Database {
     pub fn open(config: &Config) -> Result<Self> {
         let path = config.database_path()?;
+        Self::open_at(&path)
+    }
+
+    pub fn open_at(path: &Path) -> Result<Self> {
         debug!("Opening database at {path:?}");
         let config = sled::Config::default()
-            .path(&path)
+            .path(path)
             .use_compression(true)
             // we don't really care about explicit flushing
             .flush_every_ms(Some(30_000));
