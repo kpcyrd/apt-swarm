@@ -221,8 +221,11 @@ pub struct Index {
     pub fingerprint: sequoia_openpgp::Fingerprint,
     /// Only entries with this hash algorithm
     pub hash_algo: String,
-    /// Calculate an inex based on a specific prefix
+    /// Calculate an index based on a specific prefix
     pub prefix: Option<String>,
+    /// Calculate a batch index, they are bigger but allow syncs with fewer round-trips
+    #[arg(short, long)]
+    pub batch: bool,
 }
 
 /// Provide access to our signatures over stdio (use with sync-pull)

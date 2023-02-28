@@ -24,6 +24,7 @@ getrandom = "0.2.8"
 git-object = "0.26.2"
 gix = "0.37.1"
 hex = "0.4.3"
+indexmap = "1.9.2"
 irc = { version = "0.15.0", default-features = false, features = ["tls-rust"] }
 log = "0.4.17"
 memchr = "2.5.0"

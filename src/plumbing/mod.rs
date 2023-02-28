@@ -80,20 +80,25 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
             let config = config?;
             let db = Database::open(&config)?;
 
-            let (index, counter) = db
-                .index_from_scan(&sync::Query {
-                    fp: query.fingerprint,
-                    hash_algo: query.hash_algo,
-                    prefix: query.prefix,
-                })
-                .await?;
+            let mut q = sync::Query {
+                fp: query.fingerprint,
+                hash_algo: query.hash_algo,
+                prefix: query.prefix,
+            };
 
-            println!("{index}  {counter}");
+            if query.batch {
+                let (index, _) = db.batch_index_from_scan(&mut q).await?;
+                index.write_to(io::stdout()).await?;
+            } else {
+                let (index, counter) = db.index_from_scan(&q).await?;
+
+                println!("{index}  {counter}");
+            }
         }
         Plumbing::SyncYield(_sync_yield) => {
             let config = config?;
             let db = Database::open(&config)?;
-            sync::sync_yield(&db, io::stdin(), io::stdout(), None).await?;
+            sync::sync_yield(&db, io::stdin(), &mut io::stdout(), None).await?;
         }
         Plumbing::SyncPull(sync_pull) => {
             let config = config?;

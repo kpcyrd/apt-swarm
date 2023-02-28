@@ -2,9 +2,11 @@ use crate::db::{Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::signed::Signed;
+use indexmap::{IndexMap, IndexSet};
 use sequoia_openpgp::Fingerprint;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fmt;
 use std::net::SocketAddr;
 use std::str;
@@ -18,6 +20,9 @@ use tokio::time;
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 pub const SYNC_INDEX_TIMEOUT: Duration = Duration::from_secs(120);
 pub const SYNC_READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+// We expect entries from 0-f
+pub const BATCH_INDEX_MAX_SIZE: usize = 16;
 
 /// If the number of entries is greater than zero, but <= this threshold, send a dump instead of an index
 pub const SPILL_THRESHOLD: usize = 1;
@@ -120,9 +125,58 @@ impl FromStr for Query {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct BatchIndex {
+    index: IndexMap<String, (String, usize)>,
+}
+
+impl BatchIndex {
+    pub fn new() -> Self {
+        BatchIndex::default()
+    }
+
+    pub fn add(&mut self, index: String, prefix: String, count: usize) -> Result<()> {
+        if self.index.len() < BATCH_INDEX_MAX_SIZE {
+            self.index.insert(prefix, (index, count));
+            Ok(())
+        } else {
+            bail!(
+                "Batch index is already at max capacity: {:?}",
+                self.index.len()
+            )
+        }
+    }
+
+    pub async fn write_to<W: AsyncWrite + Unpin>(&self, mut sink: W) -> Result<()> {
+        for (prefix, (index, count)) in &self.index {
+            sink.write_all(format!("{index} {prefix} {count}\n").as_bytes())
+                .await?;
+        }
+        Ok(())
+    }
+
+    pub fn parse_line(&mut self, line: &[u8]) -> Result<()> {
+        let response = Response::from_bytes(line)?;
+        self.add(response.index, response.prefix, response.count)
+    }
+
+    pub fn get(&self, key: &str) -> Option<&(String, usize)> {
+        self.index.get(key)
+    }
+
+    pub fn keys(&self) -> indexmap::map::Keys<String, (String, usize)> {
+        self.index.keys()
+    }
+
+    pub fn clear(&mut self) {
+        self.index.clear();
+    }
+}
+
 #[derive(Debug)]
 pub struct Response {
     pub index: String,
+    pub prefix: String,
     pub count: usize,
 }
 
@@ -143,6 +197,7 @@ impl FromStr for Response {
     fn from_str(s: &str) -> Result<Self> {
         let mut s = s.split(' ');
         let index = s.next().context("Missing index from response")?;
+        let prefix = s.next().context("Failed to get prefix for index")?;
         let count = s.next().context("Failed to get number of children")?;
         let count = count
             .parse()
@@ -150,6 +205,7 @@ impl FromStr for Response {
 
         Ok(Response {
             index: index.to_string(),
+            prefix: prefix.to_string(),
             count,
         })
     }
@@ -180,7 +236,7 @@ pub fn index_from_scan(db: &Database, query: &Query) -> Result<(String, usize)> 
     Ok((format!("sha256:{result:x}"), counter))
 }
 
-pub async fn sync_yield<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+pub async fn sync_yield<D: DatabaseClient + Sync, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     db: &D,
     rx: R,
     mut tx: W,
@@ -205,14 +261,14 @@ pub async fn sync_yield<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrite +
             break;
         }
 
-        let query = Query::from_bytes(&line)?;
+        let mut query = Query::from_bytes(&line)?;
         trace!("Received query: {:?}", query);
-        let (index, count) = db.index_from_scan(&query).await?;
-        debug!("Calculated index: {index:?}");
 
-        if count > 0 && count <= SPILL_THRESHOLD {
+        let (index, total) = db.batch_index_from_scan(&mut query).await?;
+
+        if total > 0 && total <= SPILL_THRESHOLD {
             let prefix = query.to_string();
-            debug!("Scanning with prefix: {:?}", prefix);
+            debug!("Scanning with prefix: {prefix:?}");
             for hash in db.scan_keys(prefix.as_bytes()).await? {
                 let data = db.get_value(&hash).await?;
                 trace!("Sending data packet to client: {:?}", hash);
@@ -222,14 +278,18 @@ pub async fn sync_yield<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrite +
             }
             tx.write_all(b":0\n").await?;
         } else {
-            tx.write_all(format!("{index} {count}\n").as_bytes())
-                .await?;
+            index.write_to(&mut tx).await?;
+            tx.write_all(b"\n").await?;
         }
     }
     Ok(())
 }
 
-pub async fn sync_pull_key<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+pub async fn sync_pull_key<
+    D: DatabaseClient + Sync,
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+>(
     db: &D,
     keyring: &Keyring,
     fp: &Fingerprint,
@@ -243,20 +303,22 @@ pub async fn sync_pull_key<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrit
         prefix: None,
     };
 
-    while query
-        .prefix
-        .as_ref()
-        .map(|prefix| !prefix.is_empty())
-        .unwrap_or(true)
-    {
+    let mut queue = VecDeque::<Option<String>>::new();
+    queue.push_back(None);
+
+    while let Some(prefix) = queue.pop_front() {
+        query.prefix = prefix;
         info!("Requesting index for: {:?}", query.to_string());
         query.write_to(&mut tx).await?;
 
-        let (our_index, _our_count) = db.index_from_scan(&query).await?;
+        let (our_index, _our_count) = db.batch_index_from_scan(&mut query).await?;
         trace!("Our index: {our_index:?}");
 
+        let mut line = Vec::new();
+        let mut their_index = BatchIndex::new();
+
         loop {
-            let mut line = Vec::new();
+            line.clear();
 
             let read = rx.read_until(b'\n', &mut line);
             let n = time::timeout(SYNC_INDEX_TIMEOUT, read)
@@ -268,7 +330,35 @@ pub async fn sync_pull_key<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrit
                 bail!("Reached unexpected eof while enumerating service");
             }
 
-            if let Some(line) = line.strip_prefix(b":") {
+            if line == b"\n" {
+                let keys = their_index
+                    .keys()
+                    .chain(our_index.keys())
+                    .collect::<IndexSet<_>>();
+
+                for key in keys {
+                    match (their_index.get(key), our_index.get(key)) {
+                        (Some(theirs), Some(ours)) => {
+                            trace!("Comparing index shards for key={key:?}, theirs={theirs:?}, ours={ours:?}");
+
+                            if theirs.1 == 0 {
+                                debug!(
+                                    "No children in this shard (key={key:?}), moving to next one"
+                                );
+                            } else if theirs == ours {
+                                debug!("These shards are already in sync (key={key:?}), moving to next one");
+                            } else {
+                                debug!("Data to be found here (key={key:?}), trying to enumerate");
+                                queue.push_back(Some(key.to_string()));
+                            }
+                        }
+                        _ => bail!("Some index shards are omitted, this is currently unsupported"),
+                    }
+                }
+
+                their_index.clear();
+                break;
+            } else if let Some(line) = line.strip_prefix(b":") {
                 let line = line.strip_suffix(b"\n").unwrap_or(line);
                 let line = str::from_utf8(line).context("Length tag has invalid utf8")?;
                 trace!("Received len tag: {:?}", line);
@@ -324,27 +414,9 @@ pub async fn sync_pull_key<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrit
                     bytes = remaining;
                 }
             } else {
-                let response = Response::from_bytes(&line)?;
-                let their_index = response.index;
-                let their_count = response.count;
-                trace!("Their index: {their_index:?}");
-
-                if their_count == 0 {
-                    debug!("No children in this shard, moving to next one");
-                    while query.increment() {
-                        info!("Reached last entry in shard, returning to parent");
-                    }
-                } else if their_index == our_index {
-                    debug!("These shards are already in sync, moving to next one");
-                    while query.increment() {
-                        info!("Reached last entry in shard, returning to parent");
-                    }
-                } else {
-                    debug!("Data to be found here, trying to enumerate");
-                    query.enter();
-                }
-
-                break;
+                their_index
+                    .parse_line(&line)
+                    .with_context(|| anyhow!("Failed to parse line of batch index: {line:?}"))?;
             }
         }
     }
@@ -352,7 +424,7 @@ pub async fn sync_pull_key<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrit
     Ok(())
 }
 
-pub async fn sync_pull<D: DatabaseClient, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+pub async fn sync_pull<D: DatabaseClient + Sync, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     db: &D,
     keyring: &Keyring,
     selected_keys: &[Fingerprint],

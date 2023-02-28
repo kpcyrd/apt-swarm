@@ -14,6 +14,35 @@ pub trait DatabaseClient {
 
     async fn index_from_scan(&self, query: &sync::Query) -> Result<(String, usize)>;
 
+    async fn batch_index_from_scan(
+        &self,
+        query: &mut sync::Query,
+    ) -> Result<(sync::BatchIndex, usize)> {
+        let mut batch = sync::BatchIndex::new();
+        let mut total = 0;
+
+        query.enter();
+        loop {
+            let (index, count) = self.index_from_scan(query).await?;
+            let prefix = query.prefix.as_deref().unwrap_or("");
+
+            debug!(
+                "Calculated index for prefix: index={index:?}, prefix={:?}, count={count:?}",
+                prefix
+            );
+
+            // TODO: consider only adding responses with count > 0
+            batch.add(index, prefix.to_string(), count)?;
+            total += count;
+
+            if query.increment() {
+                break;
+            }
+        }
+
+        Ok((batch, total))
+    }
+
     async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>>;
 
     async fn get_value(&self, key: &[u8]) -> Result<sled::IVec>;
