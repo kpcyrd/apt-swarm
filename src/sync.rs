@@ -2,6 +2,7 @@ use crate::db::{Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::signed::Signed;
+use bstr::BStr;
 use indexmap::{IndexMap, IndexSet};
 use sequoia_openpgp::Fingerprint;
 use sha2::{Digest, Sha256};
@@ -20,6 +21,8 @@ use tokio_socks::tcp::Socks5Stream;
 
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 pub const PROXY_TIMEOUT: Duration = Duration::from_secs(30);
+
+pub const MAX_LINE_LENGTH: u64 = 512;
 
 pub const SYNC_INDEX_TIMEOUT: Duration = Duration::from_secs(120);
 pub const SYNC_READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -265,7 +268,8 @@ pub async fn sync_yield<D: DatabaseClient + Sync, R: AsyncRead + Unpin, W: Async
     let mut rx = io::BufReader::new(rx);
     loop {
         let mut line = Vec::new();
-        let read = rx.read_until(b'\n', &mut line);
+        let mut rrx = (&mut rx).take(MAX_LINE_LENGTH);
+        let read = rrx.read_until(b'\n', &mut line);
 
         let n = if let Some(timeout) = timeout {
             if let Ok(n) = time::timeout(timeout, read).await {
@@ -279,6 +283,13 @@ pub async fn sync_yield<D: DatabaseClient + Sync, R: AsyncRead + Unpin, W: Async
 
         if n == 0 {
             break;
+        }
+
+        if !line.ends_with(b"\n") {
+            bail!(
+                "Client sent invalid request, exceeding size limit: {:?}",
+                BStr::new(&line)
+            );
         }
 
         let mut query = Query::from_bytes(&line)?;
@@ -340,7 +351,8 @@ pub async fn sync_pull_key<
         loop {
             line.clear();
 
-            let read = rx.read_until(b'\n', &mut line);
+            let mut rrx = rx.take(MAX_LINE_LENGTH);
+            let read = rrx.read_until(b'\n', &mut line);
             let n = time::timeout(SYNC_INDEX_TIMEOUT, read)
                 .await
                 .context("Request for index timed out")?
@@ -348,6 +360,13 @@ pub async fn sync_pull_key<
 
             if n == 0 {
                 bail!("Reached unexpected eof while enumerating service");
+            }
+
+            if !line.ends_with(b"\n") {
+                bail!(
+                    "Server sent invalid line, exceeding size limit: {:?}",
+                    BStr::new(&line)
+                );
             }
 
             if line == b"\n" {
