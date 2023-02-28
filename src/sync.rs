@@ -162,8 +162,18 @@ impl BatchIndex {
     }
 
     pub fn parse_line(&mut self, line: &[u8]) -> Result<()> {
-        let response = Response::from_bytes(line)?;
-        self.add(response.index, response.prefix, response.count)
+        let line = line.strip_suffix(b"\n").unwrap_or(line);
+        let line = str::from_utf8(line).context("Response contains invalid utf8")?;
+
+        let mut s = line.split(' ');
+        let index = s.next().context("Missing index from response")?;
+        let prefix = s.next().context("Failed to get prefix for index")?;
+        let count = s.next().context("Failed to get number of children")?;
+        let count = count
+            .parse()
+            .context("Number of children is not a number")?;
+
+        self.add(index.to_string(), prefix.to_string(), count)
     }
 
     pub fn get(&self, key: &str) -> Option<&(String, usize)> {
@@ -176,44 +186,6 @@ impl BatchIndex {
 
     pub fn clear(&mut self) {
         self.index.clear();
-    }
-}
-
-#[derive(Debug)]
-pub struct Response {
-    pub index: String,
-    pub prefix: String,
-    pub count: usize,
-}
-
-impl Response {
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let line = bytes.strip_suffix(b"\n").unwrap_or(bytes);
-        let line = str::from_utf8(line).context("Response contains invalid utf8")?;
-        let response = line
-            .parse()
-            .with_context(|| anyhow!("Failed to parse input as response: {line:?}"))?;
-        Ok(response)
-    }
-}
-
-impl FromStr for Response {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self> {
-        let mut s = s.split(' ');
-        let index = s.next().context("Missing index from response")?;
-        let prefix = s.next().context("Failed to get prefix for index")?;
-        let count = s.next().context("Failed to get number of children")?;
-        let count = count
-            .parse()
-            .context("Number of children is not a number")?;
-
-        Ok(Response {
-            index: index.to_string(),
-            prefix: prefix.to_string(),
-            count,
-        })
     }
 }
 
