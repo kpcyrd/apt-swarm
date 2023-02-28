@@ -169,7 +169,7 @@ async fn main() -> Result<()> {
             let keyring = Keyring::load(&config)?;
             let db = Database::open(&config)?;
 
-            let mut sock = sync::connect(pull.addr).await?;
+            let mut sock = sync::connect(pull.addr, args.proxy).await?;
             let (rx, mut tx) = sock.split();
 
             let result =

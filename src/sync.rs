@@ -16,8 +16,11 @@ use tokio::io;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::time;
+use tokio_socks::tcp::Socks5Stream;
 
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+pub const PROXY_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub const SYNC_INDEX_TIMEOUT: Duration = Duration::from_secs(120);
 pub const SYNC_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -211,12 +214,29 @@ impl FromStr for Response {
     }
 }
 
-pub async fn connect(addr: SocketAddr) -> Result<TcpStream> {
-    let sock = TcpStream::connect(&addr);
-    let sock = time::timeout(CONNECT_TIMEOUT, sock)
+pub async fn connect(addr: SocketAddr, proxy: Option<SocketAddr>) -> Result<TcpStream> {
+    let target = proxy.unwrap_or(addr);
+
+    debug!("Creating tcp connection to {target:?}");
+    let sock = TcpStream::connect(target);
+    let mut sock = time::timeout(CONNECT_TIMEOUT, sock)
         .await
-        .with_context(|| anyhow!("Connecting to {:?} timed out", addr))?
-        .with_context(|| anyhow!("Failed to connect to {:?}", addr))?;
+        .with_context(|| anyhow!("Connecting to {target:?} timed out"))?
+        .with_context(|| anyhow!("Failed to connect to {target:?}"))?;
+
+    if let Some(proxy) = proxy {
+        debug!("Requesting socks5 connection to {addr:?}");
+        let connect = Socks5Stream::connect_with_socket(sock, addr);
+
+        sock = time::timeout(PROXY_TIMEOUT, connect)
+            .await
+            .with_context(|| anyhow!("Connecting to {addr:?} (with socks5 {proxy:?}) timed out"))?
+            .with_context(|| anyhow!("Failed to connect to {addr:?} (with socks5 {proxy:?})"))?
+            .into_inner()
+    }
+
+    debug!("Connection has been established");
+
     Ok(sock)
 }
 
