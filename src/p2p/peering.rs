@@ -3,6 +3,7 @@ use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::p2p;
 use crate::sync;
+use ipnetwork::IpNetwork;
 use sequoia_openpgp::Fingerprint;
 use std::collections::VecDeque;
 use std::convert::Infallible;
@@ -12,6 +13,17 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::time;
+
+lazy_static::lazy_static! {
+    pub static ref P2P_BLOCK_LIST: Vec<IpNetwork> = vec![
+        "127.0.0.1/8".parse().unwrap(),
+        "10.0.0.1/8".parse().unwrap(),
+        "172.16.0.0/12".parse().unwrap(),
+        "192.168.0.0/16".parse().unwrap(),
+        "169.254.0.0/16".parse().unwrap(),
+        "224.0.0.0/4".parse().unwrap(),
+    ];
+}
 
 // When an ip is in cooldown, this port is still allowed, until the specific port goes into cooldown too
 pub const STANDARD_P2P_PORT: u16 = 16169;
@@ -133,6 +145,13 @@ pub async fn spawn<D: DatabaseClient + Sync>(
         // TODO: allow concurrent syncs
 
         for addr in gossip.addrs {
+            for block in P2P_BLOCK_LIST.iter() {
+                if block.contains(addr.ip()) {
+                    debug!("Address is on a blocklist, skipping: addr={addr:?}, block={block:?}");
+                    continue;
+                }
+            }
+
             if !cooldown.can_approach(addr) {
                 debug!("Address is still in cooldown, skipping for now: {addr:?}");
                 continue;
