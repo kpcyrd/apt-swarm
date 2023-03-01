@@ -9,3 +9,6 @@ pub mod pgp;
 pub mod plumbing;
 pub mod signed;
 pub mod sync;
+
+#[cfg(fuzzing)]
+pub use sequoia_openpgp;
