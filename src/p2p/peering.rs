@@ -13,10 +13,12 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::time;
 
-pub const COOLDOWN_LRU_SIZE: usize = 16_384;
 // When an ip is in cooldown, this port is still allowed, until the specific port goes into cooldown too
 pub const STANDARD_P2P_PORT: u16 = 16169;
 
+pub const P2P_SYNC_CONNECT_JITTER: Duration = Duration::from_secs(3);
+
+pub const COOLDOWN_LRU_SIZE: usize = 16_384;
 pub const COOLDOWN_PORT_AFTER_SUCCESS: Duration = Duration::from_secs(60 * 5); // 5min
 pub const COOLDOWN_PORT_AFTER_ERROR: Duration = Duration::from_secs(60 * 60); // 1hour
 pub const COOLDOWN_HOST_AFTER_ERROR: Duration = Duration::from_secs(60 * 60); // 1hour
@@ -135,6 +137,8 @@ pub async fn spawn<D: DatabaseClient + Sync>(
                 debug!("Address is still in cooldown, skipping for now: {addr:?}");
                 continue;
             }
+
+            p2p::random_jitter(P2P_SYNC_CONNECT_JITTER).await;
 
             info!("Syncing from remote peer: {addr:?}");
             let ret = pull_from_peer(db, &keyring, fingerprints, addr, proxy).await;
