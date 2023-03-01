@@ -139,8 +139,6 @@ pub async fn spawn<D: DatabaseClient + Sync>(
     let mut cooldown = Cooldowns::new();
 
     while let Some(gossip) = rx.recv().await {
-        let fingerprints = &[gossip.fp];
-
         // TODO: only connect if we're not already in sync
         // TODO: allow concurrent syncs
 
@@ -160,7 +158,7 @@ pub async fn spawn<D: DatabaseClient + Sync>(
             p2p::random_jitter(P2P_SYNC_CONNECT_JITTER).await;
 
             info!("Syncing from remote peer: {addr:?}");
-            let ret = pull_from_peer(db, &keyring, fingerprints, addr, proxy).await;
+            let ret = pull_from_peer(db, &keyring, &[], addr, proxy).await;
             debug!("Connection to {addr:?} has been closed");
             match ret {
                 Ok(_) => {
