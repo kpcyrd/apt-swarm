@@ -27,6 +27,7 @@ hex = "0.4.3"
 indexmap = "1.9.2"
 irc = { version = "0.15.0", default-features = false, features = ["tls-rust"] }
 log = "0.4.17"
+lru = "0.9.0"
 memchr = "2.5.0"
 num-format = "0.4.4"
 reqwest = { version = "0.11.13", features = ["rustls-tls"], default-features = false }

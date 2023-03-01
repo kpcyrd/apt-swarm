@@ -182,7 +182,7 @@ async fn main() -> Result<()> {
             let config = config?;
             let keyring = Keyring::load(&config)?;
             let db = Database::open(&config)?;
-            p2p::spawn(db, keyring, p2p, config.data.repositories).await?;
+            p2p::spawn(db, keyring, p2p, config.data.repositories, args.proxy).await?;
         }
         SubCommand::Plumbing(plumbing) => plumbing::run(config, plumbing).await?,
     }

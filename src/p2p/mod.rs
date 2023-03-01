@@ -1,5 +1,6 @@
 pub mod fetch;
 pub mod irc;
+pub mod peering;
 pub mod sync;
 pub mod update_check;
 
@@ -42,6 +43,7 @@ pub async fn spawn(
     keyring: Keyring,
     p2p: P2p,
     repositories: Vec<Repository>,
+    proxy: Option<SocketAddr>,
 ) -> Result<Infallible> {
     let mut set = JoinSet::new();
 
@@ -51,7 +53,7 @@ pub async fn spawn(
         bail!("Database server has terminated");
     });
 
-    let (p2p_tx, p2p_rx) = mpsc::channel(32);
+    let (irc_tx, irc_rx) = mpsc::channel(32);
 
     if !p2p.no_bind {
         for addr in p2p.bind {
@@ -82,8 +84,10 @@ pub async fn spawn(
     }
 
     if !p2p.no_fetch {
+        let db_client = db_client.clone();
+        let keyring = keyring.clone();
         set.spawn(async move {
-            fetch::spawn_fetch_timer(&db_client, keyring, repositories, p2p.announce, p2p_tx).await
+            fetch::spawn_fetch_timer(&db_client, keyring, repositories, p2p.announce, irc_tx).await
         });
     }
 
@@ -99,8 +103,12 @@ pub async fn spawn(
     }
 
     if !p2p.no_irc {
+        // only starting this if irc is also enabled, because irc is currently the only way to get peers
+        let (peering_tx, peering_rx) = mpsc::channel(1024);
+        set.spawn(async move { peering::spawn(&db_client, keyring, proxy, peering_rx).await });
+
         // briefly delay the connection, so we don't spam irc in case something crashes immediately
-        set.spawn(irc::spawn_irc(Some(IRC_DEBOUNCE), p2p_rx));
+        set.spawn(irc::spawn_irc(Some(IRC_DEBOUNCE), irc_rx, peering_tx));
     }
 
     info!("Successfully started p2p node...");
