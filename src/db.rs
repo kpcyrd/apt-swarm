@@ -26,7 +26,7 @@ pub trait DatabaseClient {
             let (index, count) = self.index_from_scan(query).await?;
             let prefix = query.prefix.as_deref().unwrap_or("");
 
-            debug!(
+            trace!(
                 "Calculated index for prefix: index={index:?}, prefix={:?}, count={count:?}",
                 prefix
             );

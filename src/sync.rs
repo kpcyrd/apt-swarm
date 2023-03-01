@@ -353,13 +353,13 @@ pub async fn sync_pull_key<
                             trace!("Comparing index shards for key={key:?}, theirs={theirs:?}, ours={ours:?}");
 
                             if theirs.1 == 0 {
-                                debug!(
+                                trace!(
                                     "No children in this shard (key={key:?}), moving to next one"
                                 );
                             } else if theirs == ours {
-                                debug!("These shards are already in sync (key={key:?}), moving to next one");
+                                trace!("These shards are already in sync (key={key:?}), moving to next one");
                             } else {
-                                debug!("Data to be found here (key={key:?}), trying to enumerate");
+                                trace!("Data to be found here (key={key:?}), trying to enumerate");
                                 queue.push_back(Some(key.to_string()));
                             }
                         }
@@ -377,9 +377,9 @@ pub async fn sync_pull_key<
                     .with_context(|| anyhow!("Length tag is invalid number: {line:?}"))?;
 
                 if len == 0 {
-                    debug!("Received all releases from shard, moving to next one");
+                    trace!("Received all releases from shard, moving to next one");
                     while query.increment() {
-                        info!("Reached last entry in shard, returning to parent");
+                        trace!("Reached last entry in shard, returning to parent");
                     }
                     break;
                 }
