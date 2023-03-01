@@ -15,9 +15,10 @@ use std::time::Duration;
 use tokio::net::TcpSocket;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
+use tokio::time;
 
 const FETCH_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
-const INTERVAL_JITTER: Duration = Duration::from_secs(45);
+const FETCH_INTERVAL_JITTER: Duration = Duration::from_secs(45);
 const SYNC_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
@@ -28,6 +29,13 @@ const GOSSIP_IDLE_ANNOUNCE_INTERVAL: Duration = Duration::from_secs(3600 * 24); 
 const P2P_SYNC_PORT_BACKLOG: u32 = 1024;
 
 const IRC_DEBOUNCE: Duration = Duration::from_millis(250);
+const IRC_RECONNECT_COOLDOWN: Duration = Duration::from_secs(60 * 10); // 10min
+const IRC_RECONNECT_JITTER: Duration = Duration::from_secs(60 * 5); // 5min
+
+pub async fn random_jitter(jitter: Duration) {
+    let jitter = fastrand::u64(..jitter.as_secs() * 2);
+    time::sleep(Duration::from_secs(jitter)).await;
+}
 
 pub async fn spawn(
     db: Database,

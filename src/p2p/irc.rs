@@ -1,4 +1,5 @@
 use crate::errors::*;
+use crate::p2p;
 use futures::prelude::*;
 use irc::client::prelude::{Client, Command, Config, Response};
 use std::convert::Infallible;
@@ -76,14 +77,7 @@ impl FromStr for GossipInfo {
     }
 }
 
-pub async fn spawn_irc(
-    debounce: Option<Duration>,
-    mut rx: mpsc::Receiver<String>,
-) -> Result<Infallible> {
-    if let Some(debounce) = debounce {
-        tokio::time::sleep(debounce).await;
-    }
-
+pub async fn connect_irc(rx: &mut mpsc::Receiver<String>) -> Result<Infallible> {
     info!("Connecting to irc for peer discovery...");
     let nickname = random_nickname();
     let channel = "##apt-swarm-p2p";
@@ -149,6 +143,24 @@ pub async fn spawn_irc(
                 }
             }
         }
+    }
+}
+
+pub async fn spawn_irc(
+    debounce: Option<Duration>,
+    mut rx: mpsc::Receiver<String>,
+) -> Result<Infallible> {
+    if let Some(debounce) = debounce {
+        tokio::time::sleep(debounce).await;
+    }
+
+    loop {
+        if let Err(err) = connect_irc(&mut rx).await {
+            error!("irc connection has crashed: {err:#}");
+        }
+
+        time::sleep(p2p::IRC_RECONNECT_COOLDOWN - p2p::IRC_RECONNECT_JITTER).await;
+        p2p::random_jitter(p2p::IRC_RECONNECT_JITTER).await;
     }
 }
 

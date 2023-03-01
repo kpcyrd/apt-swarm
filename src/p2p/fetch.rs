@@ -43,11 +43,6 @@ impl GossipStats {
     }
 }
 
-async fn random_jitter() {
-    let jitter = fastrand::u64(..p2p::INTERVAL_JITTER.as_secs() * 2);
-    time::sleep(Duration::from_secs(jitter)).await;
-}
-
 pub async fn spawn_fetch_timer<D: DatabaseClient>(
     db: &D,
     keyring: Keyring,
@@ -61,11 +56,11 @@ pub async fn spawn_fetch_timer<D: DatabaseClient>(
     }
 
     let keyring = Arc::new(Some(keyring));
-    let mut interval = time::interval(p2p::FETCH_INTERVAL - p2p::INTERVAL_JITTER);
+    let mut interval = time::interval(p2p::FETCH_INTERVAL - p2p::FETCH_INTERVAL_JITTER);
 
     loop {
         interval.tick().await;
-        random_jitter().await;
+        p2p::random_jitter(p2p::FETCH_INTERVAL_JITTER).await;
         info!("Fetch timer has started");
         if let Err(err) =
             fetch::fetch_updates(db, keyring.clone(), None, repositories.clone()).await
