@@ -477,7 +477,7 @@ mod tests {
         let (client_rx, client_tx) = tokio::io::split(client);
         let (server_rx, server_tx) = tokio::io::split(server);
         let task_yield = sync_yield(db_a, server_rx, server_tx, None);
-        let task_pull = sync_pull(db_b, &keyring, &[], false, client_tx, client_rx);
+        let task_pull = sync_pull(db_b, keyring, &[], false, client_tx, client_rx);
 
         tokio::select! {
             ret = task_pull => ret?,
