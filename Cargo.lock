@@ -1133,11 +1133,11 @@ dependencies = [
 
 [[package]]
 name = "gix-bitmap"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5229fd26e288f417c8dd2385c5bc740415eb55aba4d6f529db7ad4b526771e06"
+checksum = "024bca0c7187517bda5ea24ab148c9ca8208dd0c3e2bea88cdb2008f91791a6d"
 dependencies = [
- "quick-error",
+ "thiserror",
 ]
 
 [[package]]
@@ -1291,12 +1291,13 @@ dependencies = [
 
 [[package]]
 name = "gix-hashtable"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a256cceeea0f0d7f42a0c3ac649535644a04395d9f415518f4008ef6bb331b5"
+checksum = "9609c1b8f36f12968e6a6098f7cdb52004f7d42d570f47a2d6d7c16612f19acb"
 dependencies = [
  "gix-hash",
  "hashbrown 0.13.2",
+ "parking_lot 0.12.1",
 ]
 
 [[package]]
@@ -1430,13 +1431,13 @@ dependencies = [
 
 [[package]]
 name = "gix-quote"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e34cffcf5dd0ddf06a768b697a0f29319284deffba970e4355b51b0fee61ffa2"
+checksum = "a282f5a8d9ee0b09ec47390ac727350c48f2f5c76d803cd8da6b3e7ad56e0bcb"
 dependencies = [
  "bstr",
  "btoi",
- "quick-error",
+ "thiserror",
 ]
 
 [[package]]
@@ -2026,9 +2027,9 @@ dependencies = [
 
 [[package]]
 name = "memsec"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ac78937f19a0c7807e45a931eac41f766f210173ec664ec046d58e6d388a5cb"
+checksum = "0fa0916b001582d253822171bd23f4a0229d32b9507fae236f5da8cad515ba7c"
 
 [[package]]
 name = "mime"
@@ -2341,12 +2342,11 @@ dependencies = [
 
 [[package]]
 name = "prodash"
-version = "23.0.0"
+version = "23.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d8c414345b4a98cbcd0e8d8829c8f54b47a7ed4fb771c45b7c5c6c0ae23dc4c"
+checksum = "88ee4651b19ce9933cb6077977767f44d332f14603f00d455ce9284e709493d0"
 dependencies = [
  "bytesize",
- "dashmap",
  "human_format",
  "parking_lot 0.11.2",
 ]
