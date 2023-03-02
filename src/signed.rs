@@ -8,6 +8,7 @@ use sequoia_openpgp::serialize::Serialize;
 use sequoia_openpgp::Fingerprint;
 use sequoia_openpgp::Packet;
 use std::io::prelude::*;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Signed {
@@ -74,6 +75,67 @@ impl Signed {
             },
             remaining,
         ))
+    }
+
+    pub async fn from_reader<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Self> {
+        let mut line = Vec::new();
+        while line != b"-----BEGIN PGP SIGNED MESSAGE-----\n" {
+            line.clear();
+            let read = reader.read_until(b'\n', &mut line).await?;
+            if read == 0 {
+                bail!("Unexpected end of document: Failed to find `BEGIN PGP SIGNED MESSAGE`");
+            }
+        }
+
+        while line != b"\n" {
+            line.clear();
+            let read = reader.read_until(b'\n', &mut line).await?;
+            if read == 0 {
+                bail!("Unexpected end of document: Failed to find end of clear-signed headers");
+            }
+        }
+
+        let mut content = Vec::new();
+        loop {
+            line.clear();
+            let read = reader.read_until(b'\n', &mut line).await?;
+            if read == 0 {
+                bail!("Unexpected end of document: Failed to find end of signed message");
+            }
+
+            if line == b"-----BEGIN PGP SIGNATURE-----\n" {
+                break;
+            }
+
+            let line = line.strip_prefix(b"- ").unwrap_or(&line);
+            content.extend(line);
+        }
+
+        let mut signature = line.to_vec();
+        while line != b"-----END PGP SIGNATURE-----\n" {
+            line.clear();
+            let read = reader.read_until(b'\n', &mut line).await?;
+            if read == 0 {
+                bail!("Unexpected end of document: Failed to find end of signature");
+            }
+
+            signature.extend(&line);
+        }
+
+        let mut reader = armor::Reader::from_bytes(
+            &signature,
+            armor::ReaderMode::Tolerant(Some(armor::Kind::Signature)),
+        );
+
+        let mut signature = Vec::new();
+        reader
+            .read_to_end(&mut signature)
+            .context("Failed to decode signature")?;
+
+        Ok(Signed {
+            content: BString::from(content),
+            signature,
+        })
     }
 
     pub fn to_clear_signed(&self) -> Result<Vec<u8>> {
@@ -2984,6 +3046,14 @@ AQ==
         let (signed2, _) = Signed::from_bytes(&txt)?;
         assert_eq!(signed, signed2);
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_from_reader() -> Result<()> {
+        let canonical = Signed::from_reader(&mut &IN_RELEASE[..]).await?;
+        let canonical = canonical.to_clear_signed()?;
+        assert_eq!(BStr::new(&canonical), BStr::new(IN_RELEASE));
         Ok(())
     }
 }

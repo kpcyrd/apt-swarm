@@ -16,7 +16,7 @@ use num_format::{Locale, ToFormattedString};
 use sequoia_openpgp::KeyHandle;
 use std::os::unix::ffi::OsStrExt;
 use std::sync::Arc;
-use tokio::io::{self, AsyncWriteExt};
+use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -43,12 +43,13 @@ async fn main() -> Result<()> {
 
             FileOrStdin::default_stdin(&mut import.paths);
             for path in import.paths {
-                let buf = path.read().await?;
+                let reader = path.open().await?;
+                let mut reader = io::BufReader::new(reader);
 
-                let mut bytes = &buf[..];
-                while !bytes.is_empty() {
-                    let (signed, remaining) =
-                        Signed::from_bytes(bytes).context("Failed to parse release file")?;
+                while !reader.fill_buf().await?.is_empty() {
+                    let signed = Signed::from_reader(&mut reader)
+                        .await
+                        .context("Failed to parse release file")?;
 
                     for (fp, variant) in signed.canonicalize(keyring.as_ref())? {
                         let fp = fp.context(
@@ -56,8 +57,6 @@ async fn main() -> Result<()> {
                         )?;
                         db.add_release(&fp, &variant).await?;
                     }
-
-                    bytes = remaining;
                 }
             }
 

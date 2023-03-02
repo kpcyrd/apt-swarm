@@ -6,9 +6,11 @@ use std::ffi::OsString;
 use std::io::stdout;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::pin::Pin;
 use tokio::fs;
+use tokio::fs::File;
 use tokio::io;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 #[derive(Debug, Clone)]
 pub enum FileOrStdin {
@@ -21,6 +23,19 @@ impl FileOrStdin {
     pub fn default_stdin(list: &mut Vec<Self>) {
         if list.is_empty() {
             list.push(Self::Stdin);
+        }
+    }
+
+    pub async fn open(&self) -> Result<OpenFileOrStdin> {
+        match self {
+            Self::File(path) => {
+                debug!("Opening file {path:?}...");
+                let file = File::open(&path)
+                    .await
+                    .with_context(|| anyhow!("Failed to open file at path: {path:?}"))?;
+                Ok(OpenFileOrStdin::File(file))
+            }
+            Self::Stdin => Ok(OpenFileOrStdin::Stdin(io::stdin())),
         }
     }
 
@@ -46,6 +61,25 @@ impl From<OsString> for FileOrStdin {
             Self::Stdin
         } else {
             Self::File(s.into())
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum OpenFileOrStdin {
+    File(File),
+    Stdin(io::Stdin),
+}
+
+impl AsyncRead for OpenFileOrStdin {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        ctx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
+        match self.get_mut() {
+            Self::File(file) => Pin::new(file).poll_read(ctx, buf),
+            Self::Stdin(stdin) => Pin::new(stdin).poll_read(ctx, buf),
         }
     }
 }
