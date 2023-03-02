@@ -15,7 +15,7 @@ use std::borrow::Cow;
 use std::os::unix::ffi::OsStrExt;
 use tokio::fs;
 use tokio::io;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 
 pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
     match args {
@@ -31,18 +31,18 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
 
             let mut stdout = io::stdout();
             for path in canonicalize.paths {
-                let buf = path.read().await?;
-                let mut bytes = &buf[..];
-                while !bytes.is_empty() {
-                    let (signed, remaining) =
-                        Signed::from_bytes(bytes).context("Failed to parse release file")?;
+                let reader = path.open().await?;
+                let mut reader = io::BufReader::new(reader);
+
+                while !reader.fill_buf().await?.is_empty() {
+                    let signed = Signed::from_reader(&mut reader)
+                        .await
+                        .context("Failed to parse release file")?;
 
                     for (_fp, variant) in signed.canonicalize(keyring.as_ref())? {
                         let text = variant.to_clear_signed()?;
                         stdout.write_all(&text).await?;
                     }
-
-                    bytes = remaining;
                 }
             }
         }
@@ -132,7 +132,9 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         },
         Plumbing::GitObject(git) => {
             for path in &git.paths {
-                let buf = path.read().await?;
+                let mut buf = Vec::new();
+                let mut reader = path.open().await?;
+                reader.read_to_end(&mut buf).await?;
 
                 let signed = git::convert(git.kind, &buf)?;
                 let normalized = signed.to_clear_signed()?;

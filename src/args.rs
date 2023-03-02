@@ -7,10 +7,9 @@ use std::io::stdout;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::pin::Pin;
-use tokio::fs;
 use tokio::fs::File;
 use tokio::io;
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::AsyncRead;
 
 #[derive(Debug, Clone)]
 pub enum FileOrStdin {
@@ -37,21 +36,6 @@ impl FileOrStdin {
             }
             Self::Stdin => Ok(OpenFileOrStdin::Stdin(io::stdin())),
         }
-    }
-
-    pub async fn read(&self) -> Result<Vec<u8>> {
-        let buf = match self {
-            Self::File(path) => fs::read(&path)
-                .await
-                .with_context(|| anyhow!("Failed to read file at path: {path:?}"))?,
-            Self::Stdin => {
-                let mut buf = Vec::new();
-                let mut stdin = io::stdin();
-                stdin.read_to_end(&mut buf).await?;
-                buf
-            }
-        };
-        Ok(buf)
     }
 }
 
