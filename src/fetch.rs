@@ -5,6 +5,7 @@ use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::signed::Signed;
 use sequoia_openpgp::Fingerprint;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 
@@ -33,11 +34,19 @@ pub async fn fetch_updates<D: DatabaseClient>(
     keyring: Arc<Option<Keyring>>,
     concurrency: Option<usize>,
     repositories: Vec<Repository>,
+    proxy: Option<SocketAddr>,
 ) -> Result<()> {
     let concurrency = concurrency.unwrap_or(DEFAULT_CONCURRENCY);
     let mut queue = repositories.into_iter();
     let mut pool = JoinSet::new();
-    let client = reqwest::Client::new();
+    let mut client = reqwest::Client::builder();
+    if let Some(proxy) = proxy {
+        let proxy = format!("socks5h://{proxy:?}");
+        let proxy = reqwest::Proxy::all(&proxy)
+            .with_context(|| anyhow!("Failed to parse as proxy: {proxy:?}"))?;
+        client = client.proxy(proxy);
+    }
+    let client = client.build().context("Failed to setup http client")?;
 
     loop {
         while pool.len() < concurrency {

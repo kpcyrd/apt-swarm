@@ -87,7 +87,15 @@ pub async fn spawn(
         let db_client = db_client.clone();
         let keyring = keyring.clone();
         set.spawn(async move {
-            fetch::spawn_fetch_timer(&db_client, keyring, repositories, p2p.announce, irc_tx).await
+            fetch::spawn_fetch_timer(
+                &db_client,
+                keyring,
+                repositories,
+                proxy,
+                p2p.announce,
+                irc_tx,
+            )
+            .await
         });
     }
 

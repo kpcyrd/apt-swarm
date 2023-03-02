@@ -96,7 +96,14 @@ async fn main() -> Result<()> {
             let db = Database::open(&config)?;
 
             let keyring = Arc::new(Some(keyring));
-            fetch::fetch_updates(&db, keyring, fetch.concurrency, config.data.repositories).await?;
+            fetch::fetch_updates(
+                &db,
+                keyring,
+                fetch.concurrency,
+                config.data.repositories,
+                args.proxy,
+            )
+            .await?;
         }
         SubCommand::Ls(ls) => {
             let config = config?;

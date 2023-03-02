@@ -47,6 +47,7 @@ pub async fn spawn_fetch_timer<D: DatabaseClient>(
     db: &D,
     keyring: Keyring,
     repositories: Vec<Repository>,
+    proxy: Option<SocketAddr>,
     announce_addrs: Vec<SocketAddr>,
     p2p_tx: mpsc::Sender<String>,
 ) -> Result<Infallible> {
@@ -63,7 +64,7 @@ pub async fn spawn_fetch_timer<D: DatabaseClient>(
         p2p::random_jitter(p2p::FETCH_INTERVAL_JITTER).await;
         info!("Fetch timer has started");
         if let Err(err) =
-            fetch::fetch_updates(db, keyring.clone(), None, repositories.clone()).await
+            fetch::fetch_updates(db, keyring.clone(), None, repositories.clone(), proxy).await
         {
             error!("Fetch timer has crashed: {err:#}");
         } else {
