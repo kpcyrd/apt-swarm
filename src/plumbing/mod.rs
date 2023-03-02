@@ -9,9 +9,11 @@ use crate::keyring::Keyring;
 use crate::pgp;
 use crate::signed::Signed;
 use crate::sync;
+use bstr::BString;
 use gix::object::Kind;
 use std::borrow::Cow;
 use std::os::unix::ffi::OsStrExt;
+use tokio::fs;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -171,6 +173,27 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
 
                     stdout.write_all(&normalized).await?;
                 }
+            }
+        }
+        Plumbing::AttachSig(attach) => {
+            let content = fs::read(&attach.content).await.with_context(|| {
+                anyhow!("Failed to read content from file: {:?}", attach.content)
+            })?;
+            let content = BString::new(content);
+
+            for sig_path in &attach.signatures {
+                let signature = fs::read(&sig_path).await.with_context(|| {
+                    anyhow!("Failed to read signature from file: {:?}", sig_path)
+                })?;
+
+                let signed = Signed {
+                    content: content.clone(),
+                    signature,
+                };
+
+                let mut stdout = io::stdout();
+                let text = signed.to_clear_signed()?;
+                stdout.write_all(&text).await?;
             }
         }
         Plumbing::Completions(completions) => {

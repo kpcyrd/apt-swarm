@@ -183,6 +183,7 @@ pub enum Plumbing {
     ContainerUpdateCheck(ContainerUpdateCheck),
     GitObject(GitObject),
     GitScrape(GitScrape),
+    AttachSig(AttachSig),
     Completions(Completions),
 }
 
@@ -267,6 +268,13 @@ pub struct GitObject {
 #[derive(Debug, Parser)]
 pub struct GitScrape {
     pub paths: Vec<PathBuf>,
+}
+
+/// Create a clear-signed document from a detached signature
+#[derive(Debug, Parser)]
+pub struct AttachSig {
+    pub content: PathBuf,
+    pub signatures: Vec<PathBuf>,
 }
 
 /// Generate shell completions
