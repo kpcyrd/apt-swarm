@@ -37,7 +37,7 @@ pub const COOLDOWN_HOST_AFTER_ERROR: Duration = Duration::from_secs(60 * 60); //
 pub const COOLDOWN_HOST_THRESHOLD: usize = 10;
 
 pub async fn pull_from_peer<D: DatabaseClient + Sync>(
-    db: &D,
+    db: &mut D,
     keyring: &Keyring,
     fingerprints: &[Fingerprint],
     addr: SocketAddr,
@@ -130,7 +130,7 @@ impl Default for Cooldowns {
 }
 
 pub async fn spawn<D: DatabaseClient + Sync>(
-    db: &D,
+    db: &mut D,
     keyring: Keyring,
     proxy: Option<SocketAddr>,
     mut rx: mpsc::Receiver<p2p::irc::PeerGossip>,

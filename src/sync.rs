@@ -293,7 +293,7 @@ pub async fn sync_pull_key<
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 >(
-    db: &D,
+    db: &mut D,
     keyring: &Keyring,
     fp: &Fingerprint,
     dry_run: bool,
@@ -436,7 +436,7 @@ pub async fn sync_pull_key<
 }
 
 pub async fn sync_pull<D: DatabaseClient + Sync, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
-    db: &D,
+    db: &mut D,
     keyring: &Keyring,
     selected_keys: &[Fingerprint],
     dry_run: bool,
@@ -472,7 +472,7 @@ mod tests {
         Ok((dir, db_a, db_b))
     }
 
-    async fn run_sync(keyring: &Keyring, db_a: &Database, db_b: &Database) -> Result<()> {
+    async fn run_sync(keyring: &Keyring, db_a: &Database, db_b: &mut Database) -> Result<()> {
         let (client, server) = tokio::io::duplex(64);
         let (client_rx, client_tx) = tokio::io::split(client);
         let (server_rx, server_tx) = tokio::io::split(server);
@@ -492,8 +492,8 @@ mod tests {
         init();
 
         let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, db_a, db_b) = open_temp_dbs()?;
-        run_sync(&keyring, &db_a, &db_b).await?;
+        let (_, db_a, mut db_b) = open_temp_dbs()?;
+        run_sync(&keyring, &db_a, &mut db_b).await?;
 
         Ok(())
     }
@@ -503,7 +503,7 @@ mod tests {
         init();
 
         let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, db_a, db_b) = open_temp_dbs()?;
+        let (_, mut db_a, mut db_b) = open_temp_dbs()?;
 
         let data = [
         b"-----BEGIN PGP SIGNED MESSAGE-----
@@ -656,7 +656,7 @@ R4AjBHbzlyIGpU5BGNn3
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 0);
 
-        run_sync(&keyring, &db_a, &db_b).await?;
+        run_sync(&keyring, &mut db_a, &mut db_b).await?;
 
         let keys_a = db_a.scan_keys(b"").await?;
         let keys_b = db_b.scan_keys(b"").await?;
@@ -671,7 +671,7 @@ R4AjBHbzlyIGpU5BGNn3
         init();
 
         let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, db_a, db_b) = open_temp_dbs()?;
+        let (_, mut db_a, mut db_b) = open_temp_dbs()?;
 
         let data = [
         b"-----BEGIN PGP SIGNED MESSAGE-----
@@ -876,7 +876,7 @@ RdMJMk9txqB8GM5F2sO3
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 1);
 
-        run_sync(&keyring, &db_a, &db_b).await?;
+        run_sync(&keyring, &mut db_a, &mut db_b).await?;
 
         let keys_a = db_a.scan_keys(b"").await?;
         let keys_b = db_b.scan_keys(b"").await?;

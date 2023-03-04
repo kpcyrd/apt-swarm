@@ -81,6 +81,12 @@ impl Config {
         Ok(path)
     }
 
+    pub fn db_socket_path(&self) -> Result<PathBuf> {
+        let data_dir = self.apt_swarm_path()?;
+        let path = data_dir.join("db.sock");
+        Ok(path)
+    }
+
     fn default_config_path() -> Result<PathBuf> {
         let config_dir = dirs::config_dir().context("Failed to detect config directory")?;
         let path = config_dir.join("apt-swarm.conf");

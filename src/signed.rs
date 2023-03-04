@@ -4,13 +4,14 @@ use bstr::BString;
 use memchr::memchr;
 use sequoia_openpgp::armor;
 use sequoia_openpgp::parse::{PacketParser, PacketParserResult, Parse};
-use sequoia_openpgp::serialize::Serialize;
+use sequoia_openpgp::serialize::Serialize as _;
 use sequoia_openpgp::Fingerprint;
 use sequoia_openpgp::Packet;
+use serde::{Deserialize, Serialize};
 use std::io::prelude::*;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Signed {
     pub content: bstr::BString,
     pub signature: Vec<u8>,

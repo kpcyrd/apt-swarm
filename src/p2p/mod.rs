@@ -1,3 +1,4 @@
+pub mod db;
 pub mod fetch;
 pub mod irc;
 pub mod peering;
@@ -5,7 +6,7 @@ pub mod sync;
 pub mod update_check;
 
 use crate::args::P2p;
-use crate::config::Repository;
+use crate::config::Config;
 use crate::db::{Database, DatabaseServer};
 use crate::errors::*;
 use crate::keyring::Keyring;
@@ -41,17 +42,23 @@ pub async fn random_jitter(jitter: Duration) {
 pub async fn spawn(
     db: Database,
     keyring: Keyring,
+    config: Config,
     p2p: P2p,
-    repositories: Vec<Repository>,
     proxy: Option<SocketAddr>,
 ) -> Result<Infallible> {
     let mut set = JoinSet::new();
 
-    let (mut db_server, db_client) = DatabaseServer::new(db);
-    set.spawn(async move {
-        db_server.run().await?;
-        bail!("Database server has terminated");
-    });
+    let (mut db_server, mut db_client) = DatabaseServer::new(db);
+    {
+        set.spawn(async move {
+            db_server.run().await?;
+            bail!("Database server has terminated");
+        });
+
+        let db_client = db_client.clone();
+        let db_socket_path = config.db_socket_path()?;
+        set.spawn(async move { db::spawn_db_server(&db_client, db_socket_path).await });
+    }
 
     let (irc_tx, irc_rx) = mpsc::channel(32);
 
@@ -84,11 +91,12 @@ pub async fn spawn(
     }
 
     if !p2p.no_fetch {
-        let db_client = db_client.clone();
+        let mut db_client = db_client.clone();
         let keyring = keyring.clone();
+        let repositories = config.data.repositories;
         set.spawn(async move {
             fetch::spawn_fetch_timer(
-                &db_client,
+                &mut db_client,
                 keyring,
                 repositories,
                 proxy,
@@ -113,7 +121,7 @@ pub async fn spawn(
     if !p2p.no_irc {
         // only starting this if irc is also enabled, because irc is currently the only way to get peers
         let (peering_tx, peering_rx) = mpsc::channel(1024);
-        set.spawn(async move { peering::spawn(&db_client, keyring, proxy, peering_rx).await });
+        set.spawn(async move { peering::spawn(&mut db_client, keyring, proxy, peering_rx).await });
 
         // briefly delay the connection, so we don't spam irc in case something crashes immediately
         set.spawn(irc::spawn_irc(Some(IRC_DEBOUNCE), irc_rx, peering_tx));

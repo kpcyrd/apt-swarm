@@ -71,16 +71,16 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::Delete(remove) => {
             let config = config?;
-            let db = Database::open(&config)?;
+            let mut db = Database::open(&config).await?;
 
             for key in remove.keys {
                 debug!("Deleting key {:?}", key);
-                db.delete(key.as_bytes())?;
+                db.delete(key.as_bytes()).await?;
             }
         }
         Plumbing::Index(query) => {
             let config = config?;
-            let db = Database::open(&config)?;
+            let db = Database::open(&config).await?;
 
             let mut q = sync::Query {
                 fp: query.fingerprint,
@@ -99,15 +99,15 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::SyncYield(_sync_yield) => {
             let config = config?;
-            let db = Database::open(&config)?;
+            let db = Database::open(&config).await?;
             sync::sync_yield(&db, io::stdin(), &mut io::stdout(), None).await?;
         }
         Plumbing::SyncPull(sync_pull) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            let db = Database::open(&config)?;
+            let mut db = Database::open(&config).await?;
             sync::sync_pull(
-                &db,
+                &mut db,
                 &keyring,
                 &sync_pull.keys,
                 sync_pull.dry_run,

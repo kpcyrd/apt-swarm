@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
         SubCommand::Import(mut import) => {
             let config = config?;
             let keyring = Some(Keyring::load(&config)?);
-            let db = Database::open(&config)?;
+            let mut db = Database::open(&config).await?;
 
             FileOrStdin::default_stdin(&mut import.paths);
             for path in import.paths {
@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
         }
         SubCommand::Export(export) => {
             let config = config?;
-            let db = Database::open(&config)?;
+            let db = Database::open_directly(&config).await?;
 
             let mut stdout = io::stdout();
             if export.release_hashes.is_empty() {
@@ -92,11 +92,11 @@ async fn main() -> Result<()> {
         SubCommand::Fetch(fetch) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            let db = Database::open(&config)?;
+            let mut db = Database::open_directly(&config).await?;
 
             let keyring = Arc::new(Some(keyring));
             fetch::fetch_updates(
-                &db,
+                &mut db,
                 keyring,
                 fetch.concurrency,
                 config.data.repositories,
@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
         }
         SubCommand::Ls(ls) => {
             let config = config?;
-            let db = Database::open(&config)?;
+            let db = Database::open_directly(&config).await?;
 
             let prefix = if let Some(prefix) = &ls.prefix {
                 prefix.as_bytes()
@@ -133,7 +133,7 @@ async fn main() -> Result<()> {
         SubCommand::Keyring(args) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            let db = Database::open(&config)?;
+            let mut db = Database::open(&config).await?;
 
             if args.json {
                 let keyring = keyring.generate_report()?;
@@ -152,7 +152,7 @@ async fn main() -> Result<()> {
 
                             let stats = if args.stats {
                                 let prefix = format!("{fp:X}/");
-                                let count = db.scan_prefix(prefix.as_bytes()).count();
+                                let count = db.count(prefix.as_bytes()).await?;
                                 if count > 0 {
                                     let count = count.to_formatted_string(&Locale::en);
                                     Some(format!("  ({count} known signatures)"))
@@ -173,13 +173,13 @@ async fn main() -> Result<()> {
         SubCommand::Pull(pull) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            let db = Database::open(&config)?;
+            let mut db = Database::open(&config).await?;
 
             let mut sock = sync::connect(pull.addr, args.proxy).await?;
             let (rx, mut tx) = sock.split();
 
             let result =
-                sync::sync_pull(&db, &keyring, &pull.keys, pull.dry_run, &mut tx, rx).await;
+                sync::sync_pull(&mut db, &keyring, &pull.keys, pull.dry_run, &mut tx, rx).await;
 
             tx.shutdown().await.ok();
             result?;
@@ -187,8 +187,12 @@ async fn main() -> Result<()> {
         SubCommand::P2p(p2p) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            let db = Database::open(&config)?;
-            p2p::spawn(db, keyring, p2p, config.data.repositories, args.proxy).await?;
+
+            // Explicitly open database, do not test for unix domain socket
+            let db_path = config.database_path()?;
+            let db = Database::open_at(&db_path)?;
+
+            p2p::spawn(db, keyring, config, p2p, args.proxy).await?;
         }
         SubCommand::Plumbing(plumbing) => plumbing::run(config, plumbing).await?,
     }

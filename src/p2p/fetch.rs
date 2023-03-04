@@ -44,7 +44,7 @@ impl GossipStats {
 }
 
 pub async fn spawn_fetch_timer<D: DatabaseClient>(
-    db: &D,
+    db: &mut D,
     keyring: Keyring,
     repositories: Vec<Repository>,
     proxy: Option<SocketAddr>,

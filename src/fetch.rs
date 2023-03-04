@@ -30,7 +30,7 @@ async fn fetch_repository_updates(
 }
 
 pub async fn fetch_updates<D: DatabaseClient>(
-    db: &D,
+    db: &mut D,
     keyring: Arc<Option<Keyring>>,
     concurrency: Option<usize>,
     repositories: Vec<Repository>,
