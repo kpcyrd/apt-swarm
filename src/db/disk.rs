@@ -15,7 +15,7 @@ pub struct Database {
 
 #[async_trait]
 impl DatabaseClient for Database {
-    async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<()> {
+    async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<String> {
         let normalized = signed.to_clear_signed()?;
 
         let mut hasher = Sha256::new();
@@ -25,7 +25,7 @@ impl DatabaseClient for Database {
 
         info!("Adding release to database: {hash:?}");
         self.insert(hash.as_bytes(), &normalized)?;
-        Ok(())
+        Ok(hash)
     }
 
     async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {

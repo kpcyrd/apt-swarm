@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use bstr::BString;
 use sequoia_openpgp::Fingerprint;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufStream};
 use tokio::net::UnixStream;
@@ -30,6 +29,7 @@ pub struct SyncQuery {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Response {
     Ok,
+    Inserted(String),
     Num(u64),
     Index((String, usize)),
     Error(ErrorResponse),
@@ -95,20 +95,16 @@ impl DatabaseUnixClient {
 
 #[async_trait]
 impl DatabaseClient for DatabaseUnixClient {
-    async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<()> {
-        // this is only calculated for logging
-        let normalized = signed.to_clear_signed()?;
-
-        let mut hasher = Sha256::new();
-        hasher.update(&normalized);
-        let result = hasher.finalize();
-        let hash = format!("{fp:X}/sha256:{result:x}");
-
-        info!("Adding release to database: {hash:?}");
+    async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<String> {
         self.send_query(&Query::AddRelease(fp.to_string(), signed.clone()))
             .await?;
-        self.recv_response().await?;
-        Ok(())
+        let inserted = self.recv_response().await?;
+        if let Response::Inserted(hash) = inserted {
+            info!("Added release to database: {hash:?}");
+            Ok(hash)
+        } else {
+            bail!("Unexpected response type from database: {inserted:?}");
+        }
     }
 
     async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {
@@ -166,7 +162,7 @@ pub enum DatabaseHandle {
 
 #[async_trait]
 impl DatabaseClient for DatabaseHandle {
-    async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<()> {
+    async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<String> {
         match self {
             Self::Direct(db) => db.add_release(fp, signed).await,
             Self::Unix(unix) => unix.add_release(fp, signed).await,

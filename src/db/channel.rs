@@ -7,7 +7,7 @@ use sequoia_openpgp::Fingerprint;
 use tokio::sync::mpsc;
 
 pub enum Query {
-    AddRelease(Fingerprint, Signed, mpsc::Sender<()>),
+    AddRelease(Fingerprint, Signed, mpsc::Sender<String>),
     IndexFromScan(sync::Query, mpsc::Sender<(String, usize)>),
     ScanKeys(Vec<u8>, mpsc::Sender<Vec<sled::IVec>>),
     GetValue(Vec<u8>, mpsc::Sender<sled::IVec>),
@@ -36,8 +36,8 @@ impl DatabaseServer {
         while let Some(msg) = self.rx.recv().await {
             match msg {
                 Query::AddRelease(fp, signed, tx) => {
-                    self.db.add_release(&fp, &signed).await?;
-                    tx.send(()).await.ok();
+                    let hash = self.db.add_release(&fp, &signed).await?;
+                    tx.send(hash).await.ok();
                 }
                 Query::IndexFromScan(query, tx) => {
                     let ret = self.db.index_from_scan(&query).await?;
@@ -86,7 +86,7 @@ impl DatabaseServerClient {
 
 #[async_trait]
 impl DatabaseClient for DatabaseServerClient {
-    async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<()> {
+    async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<String> {
         let (tx, rx) = mpsc::channel(1);
         let query = Query::AddRelease(fp.clone(), signed.clone(), tx);
         self.request(query, rx).await

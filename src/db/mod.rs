@@ -14,7 +14,7 @@ use sequoia_openpgp::Fingerprint;
 
 #[async_trait]
 pub trait DatabaseClient {
-    async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<()>;
+    async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<String>;
 
     async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)>;
 

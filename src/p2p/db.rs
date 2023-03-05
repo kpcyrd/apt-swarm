@@ -13,8 +13,8 @@ pub async fn serve_request(db: &mut DatabaseServerClient, buf: &[u8]) -> Result<
     match query {
         Query::AddRelease(fp, signed) => {
             let fp = fp.parse().context("Failed to parse fingerprint")?;
-            db.add_release(&fp, &signed).await?;
-            Ok(Response::Ok)
+            let hash = db.add_release(&fp, &signed).await?;
+            Ok(Response::Inserted(hash))
         }
         Query::IndexFromScan(query) => {
             let fp = query.fp.parse().context("Failed to parse fingerprint")?;
