@@ -139,7 +139,7 @@ pub struct Ls {
     /// Use a specific prefix to filter by
     pub prefix: Option<OsString>,
     /// Count keys present in database instead of listing them
-    #[arg(short = 'C', long)]
+    #[arg(short = 's', long)]
     pub count: bool,
 }
 
