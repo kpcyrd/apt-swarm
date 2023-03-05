@@ -35,6 +35,10 @@ async fn main() -> Result<()> {
 
     let config = config::Config::load_with_args(&args).await;
 
+    if args.colors {
+        colored::control::set_override(true);
+    }
+
     match args.subcommand {
         SubCommand::Import(mut import) => {
             let config = config?;
