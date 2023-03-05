@@ -463,6 +463,7 @@ pub async fn sync_pull_key<
             }
         }
     }
+    db.flush().await.context("Failed to flush database")?;
 
     Ok(())
 }
@@ -503,12 +504,12 @@ mod tests {
 
     fn open_temp_dbs() -> Result<(tempfile::TempDir, Database, Database)> {
         let dir = tempfile::tempdir()?;
-        let db_a = Database::open_at(&dir.path().join("a"))?;
-        let db_b = Database::open_at(&dir.path().join("b"))?;
+        let db_a = Database::open_at(&dir.path().join("a"), None)?;
+        let db_b = Database::open_at(&dir.path().join("b"), None)?;
         Ok((dir, db_a, db_b))
     }
 
-    async fn run_sync(keyring: &Keyring, db_a: &Database, db_b: &mut Database) -> Result<()> {
+    async fn run_sync(keyring: &Keyring, db_a: &mut Database, db_b: &mut Database) -> Result<()> {
         let (client, server) = tokio::io::duplex(64);
         let (client_rx, client_tx) = tokio::io::split(client);
         let (server_rx, server_tx) = tokio::io::split(server);
@@ -528,8 +529,8 @@ mod tests {
         init();
 
         let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, db_a, mut db_b) = open_temp_dbs()?;
-        run_sync(&keyring, &db_a, &mut db_b).await?;
+        let (_, mut db_a, mut db_b) = open_temp_dbs()?;
+        run_sync(&keyring, &mut db_a, &mut db_b).await?;
 
         Ok(())
     }

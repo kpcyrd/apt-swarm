@@ -15,6 +15,7 @@ pub struct Config {
     pub data: ConfigData,
     pub config_path: Option<PathBuf>,
     pub data_path: Option<PathBuf>,
+    pub db_cache_limit: Option<u64>,
 }
 
 impl Config {
@@ -41,6 +42,7 @@ impl Config {
             data,
             config_path,
             data_path: args.data_path.clone(),
+            db_cache_limit: args.db_cache_mb.map(|x| x * 1024 * 1024),
         })
     }
 

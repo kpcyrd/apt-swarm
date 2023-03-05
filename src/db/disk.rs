@@ -79,17 +79,22 @@ impl Database {
 
     pub async fn open_directly(config: &Config) -> Result<Database> {
         let path = config.database_path()?;
-        let db = Self::open_at(&path)?;
+        let db = Self::open_at(&path, config.db_cache_limit)?;
         Ok(db)
     }
 
-    pub fn open_at(path: &Path) -> Result<Self> {
+    pub fn open_at(path: &Path, db_cache_limit: Option<u64>) -> Result<Self> {
         debug!("Opening database at {path:?}");
-        let config = sled::Config::default()
+        let mut config = sled::Config::default()
             .path(path)
             .use_compression(true)
             // we don't really care about explicit flushing
-            .flush_every_ms(Some(30_000));
+            .flush_every_ms(Some(10_000));
+
+        if let Some(db_cache_limit) = db_cache_limit {
+            debug!("Setting sled cache capacity to {db_cache_limit:?}");
+            config = config.cache_capacity(db_cache_limit);
+        }
 
         let sled = config
             .open()

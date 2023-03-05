@@ -86,6 +86,9 @@ pub struct Args {
     /// Configure the path where persistent data should be stored
     #[arg(long, global = true, env = "APT_SWARM_DATA_PATH")]
     pub data_path: Option<PathBuf>,
+    /// The maximum cache size in MiB for the database system page cache
+    #[arg(long, env = "APT_SWARM_DB_CACHE_MB")]
+    pub db_cache_mb: Option<u64>,
     #[command(subcommand)]
     pub subcommand: SubCommand,
 }
