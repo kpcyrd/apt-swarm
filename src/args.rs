@@ -209,6 +209,7 @@ pub enum Plumbing {
     GitScrape(GitScrape),
     AttachSig(AttachSig),
     DbServer(DbServer),
+    Migrate(Migrate),
     Completions(Completions),
 }
 
@@ -305,6 +306,10 @@ pub struct AttachSig {
 /// Bind a unix domain socket and allow abstract database access from multiple processes
 #[derive(Debug, Parser)]
 pub struct DbServer {}
+
+/// Open a fresh database and re-import the old data
+#[derive(Debug, Parser)]
+pub struct Migrate {}
 
 /// Generate shell completions
 #[derive(Debug, Parser)]

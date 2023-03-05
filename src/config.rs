@@ -83,6 +83,18 @@ impl Config {
         Ok(path)
     }
 
+    pub fn database_migrate_path(&self) -> Result<PathBuf> {
+        let data_dir = self.apt_swarm_path()?;
+        let path = data_dir.join("storage~");
+        Ok(path)
+    }
+
+    pub fn database_delete_path(&self) -> Result<PathBuf> {
+        let data_dir = self.apt_swarm_path()?;
+        let path = data_dir.join("storage=");
+        Ok(path)
+    }
+
     pub fn db_socket_path(&self) -> Result<PathBuf> {
         let data_dir = self.apt_swarm_path()?;
         let path = data_dir.join("db.sock");

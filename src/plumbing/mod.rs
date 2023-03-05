@@ -212,6 +212,61 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
                 ret = p2p::db::spawn_db_server(&db_client, db_socket_path) => ret,
             }?;
         }
+        Plumbing::Migrate(_migrate) => {
+            let config = config?;
+            let keyring = Keyring::load(&config)?;
+
+            let new_path = config.database_path()?;
+            let migrate_path = config.database_migrate_path()?;
+            let delete_path = config.database_delete_path()?;
+
+            for path in [&migrate_path, &delete_path] {
+                if fs::metadata(&path).await.is_ok() {
+                    warn!("Previous migration has failed, removing {path:?}...");
+                    fs::remove_dir_all(&path).await.with_context(|| {
+                        anyhow!("Failed to delete failed migration at {path:?}")
+                    })?;
+                }
+            }
+
+            info!("Moving database from {new_path:?} to {migrate_path:?}...");
+            fs::rename(&new_path, &migrate_path)
+                .await
+                .with_context(|| {
+                    anyhow!("Failed to rename directory from {new_path:?} to {migrate_path:?}")
+                })?;
+
+            {
+                let mut new_db = Database::open_at(&new_path, config.db_cache_limit)?;
+                let migrate_db = Database::open_at(&migrate_path, config.db_cache_limit)?;
+
+                for item in migrate_db.scan_prefix(&[]) {
+                    let (_key, value) = item?;
+
+                    let (signed, _remaining) =
+                        Signed::from_bytes(&value).context("Failed to parse release file")?;
+
+                    for (fp, variant) in signed.canonicalize(Some(&keyring))? {
+                        let fp = fp.context(
+                            "Signature can't be imported because the signature is unverified",
+                        )?;
+                        new_db.add_release(&fp, &variant).await?;
+                    }
+                }
+
+                new_db.flush().await?;
+            }
+
+            info!("Moving database from {migrate_path:?} to {delete_path:?} for deletion...");
+            fs::rename(&migrate_path, &delete_path)
+                .await
+                .with_context(|| {
+                    anyhow!("Failed to rename directory from {migrate_path:?} to {delete_path:?}")
+                })?;
+
+            info!("Migration completed, removing migration folder...");
+            fs::remove_dir_all(&delete_path).await?;
+        }
         Plumbing::Completions(completions) => {
             args::gen_completions(&completions)?;
         }
