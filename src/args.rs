@@ -205,6 +205,7 @@ pub enum Plumbing {
     GitObject(GitObject),
     GitScrape(GitScrape),
     AttachSig(AttachSig),
+    DbServer(DbServer),
     Completions(Completions),
 }
 
@@ -297,6 +298,10 @@ pub struct AttachSig {
     pub content: PathBuf,
     pub signatures: Vec<PathBuf>,
 }
+
+/// Bind a unix domain socket and allow abstract database access from multiple processes
+#[derive(Debug, Parser)]
+pub struct DbServer {}
 
 /// Generate shell completions
 #[derive(Debug, Parser)]

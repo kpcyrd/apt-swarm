@@ -3,9 +3,11 @@ pub mod update;
 
 use crate::args::{self, FileOrStdin, Plumbing};
 use crate::config::Config;
+use crate::db::channel::DatabaseServer;
 use crate::db::{Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
+use crate::p2p;
 use crate::pgp;
 use crate::signed::Signed;
 use crate::sync;
@@ -197,6 +199,18 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
                 let text = signed.to_clear_signed()?;
                 stdout.write_all(&text).await?;
             }
+        }
+        Plumbing::DbServer(_server) => {
+            let config = config?;
+            let db = Database::open_directly(&config).await?;
+
+            let (mut db_server, db_client) = DatabaseServer::new(db);
+            let db_socket_path = config.db_socket_path()?;
+
+            tokio::select! {
+                _ = db_server.run() => bail!("Database server has terminated"),
+                ret = p2p::db::spawn_db_server(&db_client, db_socket_path) => ret,
+            }?;
         }
         Plumbing::Completions(completions) => {
             args::gen_completions(&completions)?;

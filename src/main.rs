@@ -189,8 +189,7 @@ async fn main() -> Result<()> {
             let keyring = Keyring::load(&config)?;
 
             // Explicitly open database, do not test for unix domain socket
-            let db_path = config.database_path()?;
-            let db = Database::open_at(&db_path, config.db_cache_limit)?;
+            let db = Database::open_directly(&config).await?;
 
             p2p::spawn(db, keyring, config, p2p, args.proxy).await?;
         }

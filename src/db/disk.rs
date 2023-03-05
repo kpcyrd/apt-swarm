@@ -77,7 +77,7 @@ impl Database {
         }
     }
 
-    pub async fn open_directly(config: &Config) -> Result<Database> {
+    pub async fn open_directly(config: &Config) -> Result<Self> {
         let path = config.database_path()?;
         let db = Self::open_at(&path, config.db_cache_limit)?;
         Ok(db)
