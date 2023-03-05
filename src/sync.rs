@@ -7,7 +7,7 @@ use indexmap::{IndexMap, IndexSet};
 use sequoia_openpgp::Fingerprint;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::net::SocketAddr;
 use std::str;
@@ -288,6 +288,34 @@ pub async fn sync_yield<D: DatabaseClient + Sync, R: AsyncRead + Unpin, W: Async
     Ok(())
 }
 
+#[derive(Debug, Default)]
+pub struct SyncQueue {
+    queues: BTreeMap<usize, VecDeque<Option<String>>>,
+}
+
+impl SyncQueue {
+    pub fn push(&mut self, key: Option<String>) {
+        let len = key.as_ref().map(|s| s.len()).unwrap_or(0);
+        let queue = self.queues.entry(len).or_default();
+        queue.push_back(key);
+    }
+
+    pub fn pop_next(&mut self) -> Option<Option<String>> {
+        loop {
+            if let Some(mut entry) = self.queues.last_entry() {
+                let queue = entry.get_mut();
+                if let Some(item) = queue.pop_front() {
+                    return Some(item);
+                } else {
+                    entry.remove_entry();
+                }
+            } else {
+                return None;
+            }
+        }
+    }
+}
+
 pub async fn sync_pull_key<
     D: DatabaseClient + Sync,
     R: AsyncRead + Unpin,
@@ -306,11 +334,11 @@ pub async fn sync_pull_key<
         prefix: None,
     };
 
-    let mut queue = VecDeque::<Option<String>>::new();
-    queue.push_back(None);
+    let mut queue = SyncQueue::default();
+    queue.push(None);
 
-    while let Some(prefix) = queue.pop_front() {
-        query.prefix = prefix;
+    while let Some(item) = queue.pop_next() {
+        query.prefix = item;
         info!("Requesting index for: {:?}", query.to_string());
         query.write_to(&mut tx).await?;
 
@@ -360,7 +388,7 @@ pub async fn sync_pull_key<
                                 trace!("These shards are already in sync (key={key:?}), moving to next one");
                             } else {
                                 trace!("Data to be found here (key={key:?}), trying to enumerate");
-                                queue.push_back(Some(key.to_string()));
+                                queue.push(Some(key.to_owned()));
                             }
                         }
                         _ => bail!("Some index shards are omitted, this is currently unsupported"),
