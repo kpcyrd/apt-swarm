@@ -16,10 +16,10 @@ use sequoia_openpgp::Fingerprint;
 pub trait DatabaseClient {
     async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<()>;
 
-    async fn index_from_scan(&self, query: &sync::Query) -> Result<(String, usize)>;
+    async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)>;
 
     async fn batch_index_from_scan(
-        &self,
+        &mut self,
         query: &mut sync::Query,
     ) -> Result<(sync::BatchIndex, usize)> {
         let mut batch = sync::BatchIndex::new();

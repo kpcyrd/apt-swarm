@@ -28,7 +28,7 @@ impl DatabaseClient for Database {
         Ok(())
     }
 
-    async fn index_from_scan(&self, query: &sync::Query) -> Result<(String, usize)> {
+    async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {
         sync::index_from_scan(self, query)
     }
 

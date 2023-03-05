@@ -80,7 +80,7 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::Index(query) => {
             let config = config?;
-            let db = Database::open(&config).await?;
+            let mut db = Database::open(&config).await?;
 
             let mut q = sync::Query {
                 fp: query.fingerprint,
@@ -99,8 +99,8 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::SyncYield(_sync_yield) => {
             let config = config?;
-            let db = Database::open(&config).await?;
-            sync::sync_yield(&db, io::stdin(), &mut io::stdout(), None).await?;
+            let mut db = Database::open(&config).await?;
+            sync::sync_yield(&mut db, io::stdin(), &mut io::stdout(), None).await?;
         }
         Plumbing::SyncPull(sync_pull) => {
             let config = config?;

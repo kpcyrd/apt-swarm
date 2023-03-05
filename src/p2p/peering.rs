@@ -36,7 +36,7 @@ pub const COOLDOWN_PORT_AFTER_ERROR: Duration = Duration::from_secs(60 * 60); //
 pub const COOLDOWN_HOST_AFTER_ERROR: Duration = Duration::from_secs(60 * 60); // 1hour
 pub const COOLDOWN_HOST_THRESHOLD: usize = 10;
 
-pub async fn pull_from_peer<D: DatabaseClient + Sync>(
+pub async fn pull_from_peer<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: &Keyring,
     fingerprints: &[Fingerprint],
@@ -129,7 +129,7 @@ impl Default for Cooldowns {
     }
 }
 
-pub async fn spawn<D: DatabaseClient + Sync>(
+pub async fn spawn<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: Keyring,
     proxy: Option<SocketAddr>,

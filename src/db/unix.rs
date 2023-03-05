@@ -14,15 +14,24 @@ use tokio::net::UnixStream;
 #[derive(Serialize, Deserialize)]
 pub enum Query {
     AddRelease(String, Signed),
+    IndexFromScan(SyncQuery),
     Delete(BString),
     Count(BString),
     Flush,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SyncQuery {
+    pub fp: String,
+    pub hash_algo: String,
+    pub prefix: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Response {
     Ok,
     Num(u64),
+    Index((String, usize)),
     Error(ErrorResponse),
 }
 
@@ -102,8 +111,19 @@ impl DatabaseClient for DatabaseUnixClient {
         Ok(())
     }
 
-    async fn index_from_scan(&self, _query: &sync::Query) -> Result<(String, usize)> {
-        todo!("DatabaseUnixClient::index_from_scan")
+    async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {
+        self.send_query(&Query::IndexFromScan(SyncQuery {
+            fp: query.fp.to_string(),
+            hash_algo: query.hash_algo.clone(),
+            prefix: query.prefix.clone(),
+        }))
+        .await?;
+        let index = self.recv_response().await?;
+        if let Response::Index(index) = index {
+            Ok(index)
+        } else {
+            bail!("Unexpected response type from database: {index:?}");
+        }
     }
 
     async fn scan_keys(&self, _prefix: &[u8]) -> Result<Vec<sled::IVec>> {
@@ -153,7 +173,7 @@ impl DatabaseClient for DatabaseHandle {
         }
     }
 
-    async fn index_from_scan(&self, query: &sync::Query) -> Result<(String, usize)> {
+    async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {
         match self {
             Self::Direct(db) => db.index_from_scan(query).await,
             Self::Unix(unix) => unix.index_from_scan(query).await,

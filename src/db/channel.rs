@@ -92,7 +92,7 @@ impl DatabaseClient for DatabaseServerClient {
         self.request(query, rx).await
     }
 
-    async fn index_from_scan(&self, query: &sync::Query) -> Result<(String, usize)> {
+    async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {
         let (tx, rx) = mpsc::channel(1);
         let query = Query::IndexFromScan(query.clone(), tx);
         self.request(query, rx).await

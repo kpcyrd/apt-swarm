@@ -1,6 +1,7 @@
 use crate::db::unix::{ErrorResponse, Query, Response};
 use crate::db::{DatabaseClient, DatabaseServerClient};
 use crate::errors::*;
+use crate::sync;
 use std::convert::Infallible;
 use std::path::PathBuf;
 use tokio::fs;
@@ -14,6 +15,17 @@ pub async fn serve_request(db: &mut DatabaseServerClient, buf: &[u8]) -> Result<
             let fp = fp.parse().context("Failed to parse fingerprint")?;
             db.add_release(&fp, &signed).await?;
             Ok(Response::Ok)
+        }
+        Query::IndexFromScan(query) => {
+            let fp = query.fp.parse().context("Failed to parse fingerprint")?;
+            let index = db
+                .index_from_scan(&sync::Query {
+                    fp,
+                    hash_algo: query.hash_algo,
+                    prefix: query.prefix,
+                })
+                .await?;
+            Ok(Response::Index(index))
         }
         Query::Delete(key) => {
             db.delete(&key).await?;

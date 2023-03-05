@@ -231,8 +231,12 @@ pub fn index_from_scan(db: &Database, query: &Query) -> Result<(String, usize)> 
     Ok((format!("sha256:{result:x}"), counter))
 }
 
-pub async fn sync_yield<D: DatabaseClient + Sync, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
-    db: &D,
+pub async fn sync_yield<
+    D: DatabaseClient + Sync + Send,
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+>(
+    db: &mut D,
     rx: R,
     mut tx: W,
     timeout: Option<Duration>,
@@ -317,7 +321,7 @@ impl SyncQueue {
 }
 
 pub async fn sync_pull_key<
-    D: DatabaseClient + Sync,
+    D: DatabaseClient + Sync + Send,
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 >(
@@ -463,7 +467,11 @@ pub async fn sync_pull_key<
     Ok(())
 }
 
-pub async fn sync_pull<D: DatabaseClient + Sync, R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
+pub async fn sync_pull<
+    D: DatabaseClient + Sync + Send,
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+>(
     db: &mut D,
     keyring: &Keyring,
     selected_keys: &[Fingerprint],
