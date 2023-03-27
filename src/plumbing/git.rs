@@ -1,7 +1,7 @@
 use crate::errors::*;
 use crate::signed::Signed;
 use bstr::ByteSlice;
-use git_object::{CommitRef, WriteTo};
+use gix_object::{CommitRef, WriteTo};
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum Kind {
