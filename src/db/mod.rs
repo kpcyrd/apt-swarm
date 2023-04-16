@@ -47,9 +47,9 @@ pub trait DatabaseClient {
         Ok((batch, total))
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>>;
+    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<Vec<u8>>>;
 
-    async fn get_value(&self, key: &[u8]) -> Result<sled::IVec>;
+    async fn get_value(&self, key: &[u8]) -> Result<Vec<u8>>;
 
     async fn delete(&mut self, key: &[u8]) -> Result<()>;
 

@@ -237,14 +237,15 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
                 })?;
 
             {
-                let mut new_db = Database::open_at(&new_path, config.db_cache_limit)?;
-                let migrate_db = Database::open_at(&migrate_path, config.db_cache_limit)?;
+                let mut new_db = Database::open_at(&new_path).await?;
+                let migrate_db = Database::open_at(&migrate_path).await?;
 
-                for item in migrate_db.scan_prefix(&[]) {
+                let rotxn = migrate_db.read_txn()?;
+                for item in migrate_db.scan_prefix(&rotxn, &[])? {
                     let (_key, value) = item?;
 
                     let (signed, _remaining) =
-                        Signed::from_bytes(&value).context("Failed to parse release file")?;
+                        Signed::from_bytes(value).context("Failed to parse release file")?;
 
                     for (fp, variant) in signed.canonicalize(Some(&keyring))? {
                         let fp = fp.context(

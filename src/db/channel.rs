@@ -9,14 +9,13 @@ use tokio::sync::mpsc;
 pub enum Query {
     AddRelease(Fingerprint, Signed, mpsc::Sender<String>),
     IndexFromScan(sync::Query, mpsc::Sender<(String, usize)>),
-    ScanKeys(Vec<u8>, mpsc::Sender<Vec<sled::IVec>>),
-    GetValue(Vec<u8>, mpsc::Sender<sled::IVec>),
+    ScanKeys(Vec<u8>, mpsc::Sender<Vec<Vec<u8>>>),
+    GetValue(Vec<u8>, mpsc::Sender<Vec<u8>>),
     Delete(Vec<u8>, mpsc::Sender<()>),
     Count(Vec<u8>, mpsc::Sender<u64>),
     Flush(mpsc::Sender<()>),
 }
 
-#[derive(Debug)]
 pub struct DatabaseServer {
     db: Database,
     rx: mpsc::Receiver<Query>,
@@ -98,13 +97,13 @@ impl DatabaseClient for DatabaseServerClient {
         self.request(query, rx).await
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>> {
+    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<Vec<u8>>> {
         let (tx, rx) = mpsc::channel(1);
         let query = Query::ScanKeys(prefix.to_vec(), tx);
         self.request(query, rx).await
     }
 
-    async fn get_value(&self, key: &[u8]) -> Result<sled::IVec> {
+    async fn get_value(&self, key: &[u8]) -> Result<Vec<u8>> {
         let (tx, rx) = mpsc::channel(1);
         let query = Query::GetValue(key.to_vec(), tx);
         self.request(query, rx).await

@@ -69,19 +69,20 @@ async fn main() -> Result<()> {
         SubCommand::Export(export) => {
             let config = config?;
             let db = Database::open_directly(&config).await?;
-
+            let rotxn = db.read_txn()?;
             let mut stdout = io::stdout();
+
             if export.release_hashes.is_empty() {
-                for item in db.scan_prefix(&[]) {
+                for item in db.scan_prefix(&rotxn, &[])? {
                     let (_hash, data) = item.context("Failed to read from database")?;
-                    stdout.write_all(&data).await?;
+                    stdout.write_all(data).await?;
                 }
             } else {
                 for hash in &export.release_hashes {
                     if export.scan {
-                        for item in db.scan_prefix(hash.as_bytes()) {
+                        for item in db.scan_prefix(&rotxn, hash.as_bytes())? {
                             let (_hash, data) = item.context("Failed to read from database")?;
-                            stdout.write_all(&data).await?;
+                            stdout.write_all(data).await?;
                         }
                     } else {
                         let data = db
@@ -111,6 +112,7 @@ async fn main() -> Result<()> {
         SubCommand::Ls(ls) => {
             let config = config?;
             let db = Database::open_directly(&config).await?;
+            let rotxn = db.read_txn()?;
 
             let prefix = if let Some(prefix) = &ls.prefix {
                 prefix.as_bytes()
@@ -120,13 +122,14 @@ async fn main() -> Result<()> {
 
             let mut stdout = io::stdout();
             let mut count = 0;
-            for item in db.scan_prefix(prefix) {
+
+            for item in db.scan_prefix(&rotxn, prefix)? {
                 if ls.count {
                     count += 1;
                     continue;
                 }
                 let (hash, _data) = item.context("Failed to read from database")?;
-                stdout.write_all(&hash).await?;
+                stdout.write_all(hash).await?;
                 stdout.write_all(b"\n").await?;
             }
 
