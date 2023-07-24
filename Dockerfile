@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-FROM rust:1-alpine3.17 as build
+FROM rust:1-alpine3.18 as build
 ENV RUSTFLAGS="-C target-feature=-crt-static"
 RUN --mount=type=cache,target=/var/cache/apk ln -vs /var/cache/apk /etc/apk/cache && \
     apk add clang-dev musl-dev nettle-dev zstd-dev && \
@@ -14,17 +14,12 @@ RUN --mount=type=cache,target=/var/cache/buildkit \
     cp -v /var/cache/buildkit/target/release/apt-swarm .
 RUN strip apt-swarm
 
-# this is temporary until crane becomes available in the next alpine release
-FROM golang:alpine3.17 as crane
-RUN go install github.com/google/go-containerregistry/cmd/crane@latest
-
-FROM alpine:3.17
+FROM alpine:3.18
 # install dependencies
 RUN --mount=type=cache,target=/var/cache/apk ln -vs /var/cache/apk /etc/apk/cache && \
-    apk add clang-libs libgcc nettle zstd-libs && \
+    apk add clang-libs crane libgcc nettle zstd-libs && \
     rm /etc/apk/cache && \
     mkdir /data
-COPY --from=crane /go/bin/crane /usr/bin
 # copy the binary
 COPY --from=0 /app/apt-swarm /usr/bin
 COPY contrib/apt-swarm.conf /etc
