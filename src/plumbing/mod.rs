@@ -170,7 +170,9 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
                             git::convert(Some(git::Kind::Tag), &obj.data)
                         }
                         _ => continue,
-                    }) else { continue };
+                    }) else {
+                        continue;
+                    };
 
                     debug!("Found signed git object: {:?}", obj.id);
                     let normalized = signed.to_clear_signed()?;
