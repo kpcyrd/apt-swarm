@@ -8,6 +8,9 @@ repository = "https://github.com/kpcyrd/apt-swarm"
 categories = ["command-line-utilities"]
 edition = "2021"
 
+[workspace]
+members = ["fuzz"]
+
 [dependencies]
 anyhow = "1.0.68"
 async-trait = "0.1.64"
