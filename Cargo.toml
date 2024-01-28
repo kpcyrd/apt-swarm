@@ -20,19 +20,19 @@ clap = { version = "4.0.32", features = ["derive", "env"] }
 clap_complete = "4.0.7"
 colored = "2.0.0"
 dirs = "5"
-env_logger = "0.10.0"
+env_logger = "0.11"
 fastrand = "2"
 futures = "0.3.26"
 getrandom = "0.2.8"
-gix = "0.50"
-gix-object = "0.33"
+gix = "0.58"
+gix-object = "0.41"
 hex = "0.4.3"
 indexmap = "2"
 ipnetwork = "0.20.0"
 irc = { version = "0.15.0", default-features = false, features = ["tls-rust"] }
 lazy_static = "1.4.0"
 log = "0.4.17"
-lru = "0.11"
+lru = "0.12"
 memchr = "2.5.0"
 num-format = "0.4.4"
 reqwest = { version = "0.11.13", features = ["rustls-tls", "socks"], default-features = false }
@@ -44,7 +44,7 @@ sled = { version = "0.34.7", features = ["compression"] }
 socket2 = "0.5"
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "io-util", "io-std", "fs", "process", "net"] }
 tokio-socks = "0.5.1"
-toml = "0.7.1"
+toml = "0.8"
 
 [dev-dependencies]
 tempfile = "3.4.0"
