@@ -2833,9 +2833,9 @@ dependencies = [
 
 [[package]]
 name = "sequoia-openpgp"
-version = "1.18.0"
+version = "1.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26e9c71323d9848404e343a6b5c3a73de10bc496ca3481b66586ba9064de027e"
+checksum = "c81335e4cf7506578920b35c011cd76a4b06a876cdef1f02802d53607ff84f49"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
