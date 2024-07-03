@@ -19,7 +19,13 @@ async fn fetch_repository_updates(
     let mut out = Vec::new();
 
     for source in &repository.urls {
-        let signed = source.fetch(client).await?;
+        let Ok(signed) = source
+            .fetch(client)
+            .await
+            .inspect_err(|err| error!("Error fetching latest release: {err:#}"))
+        else {
+            continue;
+        };
 
         for item in signed.canonicalize(keyring.as_ref())? {
             out.push(item);
