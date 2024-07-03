@@ -128,6 +128,7 @@ impl ConfigData {
 
 #[derive(Debug, PartialEq, Default, Clone, Serialize, Deserialize)]
 pub struct Repository {
+    #[serde(default)]
     pub urls: Vec<UrlSource>,
     pub keyring: String,
 }

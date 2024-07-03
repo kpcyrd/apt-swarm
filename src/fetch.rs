@@ -7,9 +7,12 @@ use crate::signed::Signed;
 use sequoia_openpgp::Fingerprint;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::task::JoinSet;
 
 pub const DEFAULT_CONCURRENCY: usize = 4;
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+pub const READ_TIMEOUT: Duration = Duration::from_secs(60);
 
 async fn fetch_repository_updates(
     client: &reqwest::Client,
@@ -19,7 +22,13 @@ async fn fetch_repository_updates(
     let mut out = Vec::new();
 
     for source in &repository.urls {
-        let signed = source.fetch(client).await?;
+        let Ok(signed) = source
+            .fetch(client)
+            .await
+            .inspect_err(|err| error!("Error fetching latest release: {err:#}"))
+        else {
+            continue;
+        };
 
         for item in signed.canonicalize(keyring.as_ref())? {
             out.push(item);
@@ -39,7 +48,9 @@ pub async fn fetch_updates<D: DatabaseClient>(
     let concurrency = concurrency.unwrap_or(DEFAULT_CONCURRENCY);
     let mut queue = repositories.into_iter();
     let mut pool = JoinSet::new();
-    let mut client = reqwest::Client::builder();
+    let mut client = reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .read_timeout(READ_TIMEOUT);
     if let Some(proxy) = proxy {
         let proxy = format!("socks5h://{proxy:?}");
         let proxy = reqwest::Proxy::all(&proxy)

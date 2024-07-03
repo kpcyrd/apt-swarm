@@ -135,7 +135,7 @@ impl Keyring {
             }
 
             sig.clone()
-                .verify_message(key, &body)
+                .verify_message(key, body)
                 .context("Failed to verify message")?;
             debug!("Successfully verified signature");
             return Ok(key_fp);
