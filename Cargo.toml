@@ -11,6 +11,10 @@ edition = "2021"
 [workspace]
 members = ["fuzz"]
 
+# https://github.com/rust-fuzz/cargo-fuzz/issues/372
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
+
 [dependencies]
 anyhow = "1.0.68"
 async-trait = "0.1.64"
@@ -30,7 +34,6 @@ hex = "0.4.3"
 indexmap = "2"
 ipnetwork = "0.20.0"
 irc = { version = "1", default-features = false, features = ["tls-rust"] }
-lazy_static = "1.4.0"
 log = "0.4.17"
 lru = "0.12"
 memchr = "2.5.0"

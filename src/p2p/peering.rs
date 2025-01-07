@@ -9,21 +9,22 @@ use std::collections::VecDeque;
 use std::convert::Infallible;
 use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroUsize;
+use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::time;
 
-lazy_static::lazy_static! {
-    pub static ref P2P_BLOCK_LIST: Vec<IpNetwork> = vec![
+pub static P2P_BLOCK_LIST: LazyLock<Vec<IpNetwork>> = LazyLock::new(|| {
+    vec![
         "127.0.0.1/8".parse().unwrap(),
         "10.0.0.1/8".parse().unwrap(),
         "172.16.0.0/12".parse().unwrap(),
         "192.168.0.0/16".parse().unwrap(),
         "169.254.0.0/16".parse().unwrap(),
         "224.0.0.0/4".parse().unwrap(),
-    ];
-}
+    ]
+});
 
 // When an ip is in cooldown, this port is still allowed, until the specific port goes into cooldown too
 pub const STANDARD_P2P_PORT: u16 = 16169;

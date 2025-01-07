@@ -68,7 +68,7 @@ kubectl apply -f contrib/k8s.yaml -n apt-swarm
 To ascii armor the pgp key use this command:
 
 ```
-sq armor < contrib/signal-desktop-keyring.gpg
+sq packet armor < contrib/signal-desktop-keyring.gpg
 ```
 
 Then write a configuration like this:
