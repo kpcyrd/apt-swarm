@@ -215,12 +215,12 @@ pub async fn connect(addr: SocketAddr, proxy: Option<SocketAddr>) -> Result<TcpS
     Ok(sock)
 }
 
-pub fn index_from_scan(db: &Database, query: &Query) -> Result<(String, usize)> {
+pub async fn index_from_scan(db: &Database, query: &Query) -> Result<(String, usize)> {
     let prefix = query.to_string();
 
     let mut counter = 0;
     let mut hasher = Sha256::new();
-    for item in db.scan_prefix(prefix.as_bytes()) {
+    for item in db.scan_prefix(prefix.as_bytes()).await {
         let (hash, _data) = item.context("Failed to read from database")?;
         hasher.update(&hash);
         hasher.update(b"\n");
@@ -497,15 +497,16 @@ pub async fn sync_pull<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::AccessMode;
 
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
     }
 
-    fn open_temp_dbs() -> Result<(tempfile::TempDir, Database, Database)> {
+    async fn open_temp_dbs() -> Result<(tempfile::TempDir, Database, Database)> {
         let dir = tempfile::tempdir()?;
-        let db_a = Database::open_at(&dir.path().join("a"), None)?;
-        let db_b = Database::open_at(&dir.path().join("b"), None)?;
+        let db_a = Database::open_at(dir.path().join("a"), AccessMode::Exclusive).await?;
+        let db_b = Database::open_at(dir.path().join("b"), AccessMode::Exclusive).await?;
         Ok((dir, db_a, db_b))
     }
 
@@ -529,7 +530,7 @@ mod tests {
         init();
 
         let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, mut db_a, mut db_b) = open_temp_dbs()?;
+        let (_, mut db_a, mut db_b) = open_temp_dbs().await?;
         run_sync(&keyring, &mut db_a, &mut db_b).await?;
 
         Ok(())
@@ -540,7 +541,7 @@ mod tests {
         init();
 
         let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, mut db_a, mut db_b) = open_temp_dbs()?;
+        let (_, mut db_a, mut db_b) = open_temp_dbs().await?;
 
         let data = [
         b"-----BEGIN PGP SIGNED MESSAGE-----
@@ -708,7 +709,7 @@ R4AjBHbzlyIGpU5BGNn3
         init();
 
         let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, mut db_a, mut db_b) = open_temp_dbs()?;
+        let (_, mut db_a, mut db_b) = open_temp_dbs().await?;
 
         let data = [
         b"-----BEGIN PGP SIGNED MESSAGE-----

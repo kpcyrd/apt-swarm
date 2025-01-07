@@ -4,7 +4,7 @@ pub mod update;
 use crate::args::{self, FileOrStdin, Plumbing};
 use crate::config::Config;
 use crate::db::channel::DatabaseServer;
-use crate::db::{Database, DatabaseClient};
+use crate::db::{AccessMode, Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::p2p;
@@ -73,7 +73,7 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::Delete(remove) => {
             let config = config?;
-            let mut db = Database::open(&config).await?;
+            let mut db = Database::open(&config, AccessMode::Exclusive).await?;
 
             for key in remove.keys {
                 debug!("Deleting key {:?}", key);
@@ -82,7 +82,7 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::Index(query) => {
             let config = config?;
-            let mut db = Database::open(&config).await?;
+            let mut db = Database::open(&config, AccessMode::Relaxed).await?;
 
             let mut q = sync::Query {
                 fp: query.fingerprint,
@@ -101,13 +101,13 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::SyncYield(_sync_yield) => {
             let config = config?;
-            let mut db = Database::open(&config).await?;
+            let mut db = Database::open(&config, AccessMode::Relaxed).await?;
             sync::sync_yield(&mut db, io::stdin(), &mut io::stdout(), None).await?;
         }
         Plumbing::SyncPull(sync_pull) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            let mut db = Database::open(&config).await?;
+            let mut db = Database::open(&config, AccessMode::Exclusive).await?;
             sync::sync_pull(
                 &mut db,
                 &keyring,
@@ -204,7 +204,7 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::DbServer(_server) => {
             let config = config?;
-            let db = Database::open_directly(&config).await?;
+            let db = Database::open_directly(&config, AccessMode::Exclusive).await?;
 
             let (mut db_server, db_client) = DatabaseServer::new(db);
             let db_socket_path = config.db_socket_path()?;
@@ -239,10 +239,11 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
                 })?;
 
             {
-                let mut new_db = Database::open_at(&new_path, config.db_cache_limit)?;
-                let migrate_db = Database::open_at(&migrate_path, config.db_cache_limit)?;
+                let mut new_db = Database::open_at(new_path, AccessMode::Exclusive).await?;
+                let migrate_db =
+                    Database::open_at(migrate_path.clone(), AccessMode::Exclusive).await?;
 
-                for item in migrate_db.scan_prefix(&[]) {
+                for item in migrate_db.scan_prefix(&[]).await {
                     let (_key, value) = item?;
 
                     let (signed, _remaining) =

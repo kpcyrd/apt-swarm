@@ -3,11 +3,12 @@ pub mod disk;
 pub mod unix;
 
 pub use self::channel::{DatabaseServer, DatabaseServerClient};
-pub use self::disk::Database;
+pub use self::disk::{AccessMode, Database};
 pub use self::unix::{DatabaseHandle, DatabaseUnixClient};
 
 use crate::errors::*;
 use crate::signed::Signed;
+use crate::sled;
 use crate::sync;
 use async_trait::async_trait;
 use sequoia_openpgp::Fingerprint;

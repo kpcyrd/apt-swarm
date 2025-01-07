@@ -1,7 +1,6 @@
 use apt_swarm::args::{Args, FileOrStdin, SubCommand};
 use apt_swarm::config;
-use apt_swarm::db::Database;
-use apt_swarm::db::DatabaseClient;
+use apt_swarm::db::{AccessMode, Database, DatabaseClient};
 use apt_swarm::errors::*;
 use apt_swarm::fetch;
 use apt_swarm::keyring::Keyring;
@@ -43,7 +42,7 @@ async fn main() -> Result<()> {
         SubCommand::Import(mut import) => {
             let config = config?;
             let keyring = Some(Keyring::load(&config)?);
-            let mut db = Database::open(&config).await?;
+            let mut db = Database::open(&config, AccessMode::Exclusive).await?;
 
             FileOrStdin::default_stdin(&mut import.paths);
             for path in import.paths {
@@ -68,24 +67,25 @@ async fn main() -> Result<()> {
         }
         SubCommand::Export(export) => {
             let config = config?;
-            let db = Database::open_directly(&config).await?;
+            let db = Database::open_directly(&config, AccessMode::Relaxed).await?;
 
             let mut stdout = io::stdout();
             if export.release_hashes.is_empty() {
-                for item in db.scan_prefix(&[]) {
+                for item in db.scan_prefix(&[]).await {
                     let (_hash, data) = item.context("Failed to read from database")?;
                     stdout.write_all(&data).await?;
                 }
             } else {
                 for hash in &export.release_hashes {
                     if export.scan {
-                        for item in db.scan_prefix(hash.as_bytes()) {
+                        for item in db.scan_prefix(hash.as_bytes()).await {
                             let (_hash, data) = item.context("Failed to read from database")?;
                             stdout.write_all(&data).await?;
                         }
                     } else {
                         let data = db
                             .get(hash)
+                            .await
                             .context("Failed to read database")?
                             .with_context(|| anyhow!("Failed to find key in database: {hash:?}"))?;
                         stdout.write_all(&data).await?;
@@ -96,7 +96,7 @@ async fn main() -> Result<()> {
         SubCommand::Fetch(fetch) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            let mut db = Database::open_directly(&config).await?;
+            let mut db = Database::open_directly(&config, AccessMode::Exclusive).await?;
 
             let keyring = Arc::new(Some(keyring));
             fetch::fetch_updates(
@@ -110,7 +110,9 @@ async fn main() -> Result<()> {
         }
         SubCommand::Ls(ls) => {
             let config = config?;
-            let db = Database::open_directly(&config).await?;
+            // TODO: this should call open(), but needs to be rewritten because
+            // .scan_prefix is not available over unix domain socket
+            let db = Database::open_directly(&config, AccessMode::Relaxed).await?;
 
             let prefix = if let Some(prefix) = &ls.prefix {
                 prefix.as_bytes()
@@ -120,7 +122,7 @@ async fn main() -> Result<()> {
 
             let mut stdout = io::stdout();
             let mut count = 0;
-            for item in db.scan_prefix(prefix) {
+            for item in db.scan_prefix(prefix).await {
                 if ls.count {
                     count += 1;
                     continue;
@@ -137,7 +139,7 @@ async fn main() -> Result<()> {
         SubCommand::Keyring(args) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            let mut db = Database::open(&config).await?;
+            let mut db = Database::open(&config, AccessMode::Relaxed).await?;
 
             if args.json {
                 let keyring = keyring.generate_report()?;
@@ -177,7 +179,7 @@ async fn main() -> Result<()> {
         SubCommand::Pull(pull) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            let mut db = Database::open(&config).await?;
+            let mut db = Database::open(&config, AccessMode::Exclusive).await?;
 
             let mut sock = sync::connect(pull.addr, args.proxy).await?;
             let (rx, mut tx) = sock.split();
@@ -193,7 +195,7 @@ async fn main() -> Result<()> {
             let keyring = Keyring::load(&config)?;
 
             // Explicitly open database, do not test for unix domain socket
-            let db = Database::open_directly(&config).await?;
+            let db = Database::open_directly(&config, AccessMode::Exclusive).await?;
 
             p2p::spawn(db, keyring, config, p2p, args.proxy).await?;
         }

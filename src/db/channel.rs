@@ -1,6 +1,7 @@
 use super::{Database, DatabaseClient};
 use crate::errors::*;
 use crate::signed::Signed;
+use crate::sled;
 use crate::sync;
 use async_trait::async_trait;
 use sequoia_openpgp::Fingerprint;
