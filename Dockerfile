@@ -1,6 +1,4 @@
-# syntax=docker/dockerfile:1.4
-
-FROM rust:1-alpine3.18 as build
+FROM rust:1-alpine3.21 as build
 ENV RUSTFLAGS="-C target-feature=-crt-static"
 RUN --mount=type=cache,target=/var/cache/apk ln -vs /var/cache/apk /etc/apk/cache && \
     apk add clang-dev musl-dev zstd-dev && \
@@ -14,7 +12,7 @@ RUN --mount=type=cache,target=/var/cache/buildkit \
     cp -v /var/cache/buildkit/target/release/apt-swarm .
 RUN strip apt-swarm
 
-FROM alpine:3.18
+FROM alpine:3.21
 # install dependencies
 RUN --mount=type=cache,target=/var/cache/apk ln -vs /var/cache/apk /etc/apk/cache && \
     apk add clang-libs crane libgcc zstd-libs && \
