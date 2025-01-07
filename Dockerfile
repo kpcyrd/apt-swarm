@@ -3,7 +3,7 @@
 FROM rust:1-alpine3.18 as build
 ENV RUSTFLAGS="-C target-feature=-crt-static"
 RUN --mount=type=cache,target=/var/cache/apk ln -vs /var/cache/apk /etc/apk/cache && \
-    apk add clang-dev musl-dev nettle-dev zstd-dev && \
+    apk add clang-dev musl-dev zstd-dev && \
     rm /etc/apk/cache
 WORKDIR /app
 COPY ./ /app
@@ -17,7 +17,7 @@ RUN strip apt-swarm
 FROM alpine:3.18
 # install dependencies
 RUN --mount=type=cache,target=/var/cache/apk ln -vs /var/cache/apk /etc/apk/cache && \
-    apk add clang-libs crane libgcc nettle zstd-libs && \
+    apk add clang-libs crane libgcc zstd-libs && \
     rm /etc/apk/cache && \
     mkdir /data
 # copy the binary
