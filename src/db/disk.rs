@@ -28,18 +28,36 @@ pub enum AccessMode {
 }
 
 fn is_valid_key_fp(bytes: &[u8]) -> bool {
-    bytes.iter().all(|b| match b {
-        b'0'..=b'9' => true,
-        b'A'..=b'F' => true,
-        _ => false,
-    })
+    bytes.iter().all(|b| matches!(b, b'0'..=b'9' | b'A'..=b'F'))
+}
+
+fn folder_matches_prefix<'a>(folder: &str, full_prefix: &'a [u8]) -> Option<&'a [u8]> {
+    let (prefix, suffix) = full_prefix
+        .split_at_checked(folder.len())
+        .unwrap_or((full_prefix, &[]));
+    if BStr::new(folder.as_bytes()).starts_with(prefix) {
+        if prefix != full_prefix {
+            suffix.strip_prefix(b"/")
+        } else {
+            Some(suffix)
+        }
+    } else {
+        None
+    }
+}
+
+fn file_matches_prefix(file: &str, prefix: &[u8]) -> bool {
+    let prefix = prefix
+        .split_at_checked(file.len())
+        .map(|(prefix, _)| prefix)
+        .unwrap_or(prefix);
+    BStr::new(file.as_bytes()).starts_with(prefix)
 }
 
 #[derive(Debug)]
 pub struct Database {
     path: PathBuf,
     mode: AccessMode,
-    // sled: sled::Db,
 }
 
 #[async_trait]
@@ -245,6 +263,13 @@ impl Database {
             Ok(mut dir) => loop {
                 match dir.next_entry().await {
                     Ok(Some(folder)) => {
+                        let path = folder.path();
+
+                        if !path.is_dir() {
+                            warn!("Found unexpected file in storage folder: {path:?}");
+                            continue;
+                        }
+
                         let folder_name = match folder.file_name().into_string() {
                             Ok(name) => name,
                             Err(err) => {
@@ -253,13 +278,33 @@ impl Database {
                             }
                         };
 
+                        let Some(partitioned_prefix) = folder_matches_prefix(&folder_name, prefix)
+                        else {
+                            continue;
+                        };
+
                         // TODO: optimize: skip directory if it can't match prefix
                         // TODO: this also needs sorting somehow
-                        match fs::read_dir(folder.path()).await {
+                        match fs::read_dir(path).await {
                             Ok(mut dir) => loop {
                                 match dir.next_entry().await {
-                                    Ok(Some(folder)) => {
-                                        let path = folder.path();
+                                    Ok(Some(file)) => {
+                                        let path = file.path();
+
+                                        let filename = match file.file_name().into_string() {
+                                            Ok(name) => name,
+                                            Err(err) => {
+                                                out.push(Err(anyhow!(
+                                                    "Found invalid shard file: {err:?}"
+                                                )));
+                                                return out;
+                                            }
+                                        };
+
+                                        if !file_matches_prefix(&filename, partitioned_prefix) {
+                                            continue;
+                                        }
+
                                         let file =
                                             match fs::File::open(&path).await.with_context(|| {
                                                 anyhow!("Failed to open database file: {path:?}")
@@ -316,7 +361,7 @@ impl Database {
                                                     }
                                                 }
                                                 Err(err) => {
-                                                    out.push(Err(err.into()));
+                                                    out.push(Err(err));
                                                     return out;
                                                 }
                                             }
@@ -331,6 +376,7 @@ impl Database {
                             },
                             Err(err) => {
                                 out.push(Err(err.into()));
+                                return out;
                             }
                         }
                     }
@@ -344,6 +390,7 @@ impl Database {
             Err(err) => {
                 if err.kind() != ErrorKind::NotFound {
                     out.push(Err(err).context("Failed to read storage directory"));
+                    return out;
                 }
             }
         }
@@ -357,5 +404,110 @@ impl Database {
         });
 
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_folder_folder_matches_prefix() {
+        assert_eq!(
+            folder_matches_prefix("ED541312A33F1128F10B1C6C54404762BBB6E853", b""),
+            Some(&b""[..])
+        );
+        assert_eq!(
+            folder_matches_prefix("ED541312A33F1128F10B1C6C54404762BBB6E853", b"E"),
+            Some(&b""[..])
+        );
+        assert_eq!(
+            folder_matches_prefix("ED541312A33F1128F10B1C6C54404762BBB6E853", b"EF"),
+            None
+        );
+        assert_eq!(
+            folder_matches_prefix("ED541312A33F1128F10B1C6C54404762BBB6E853", b"ED541312"),
+            Some(&b""[..])
+        );
+        assert_eq!(
+            folder_matches_prefix(
+                "ED541312A33F1128F10B1C6C54404762BBB6E853",
+                b"ED541312A33F1128F10B1C6C54404762BBB6E853"
+            ),
+            Some(&b""[..])
+        );
+        assert_eq!(
+            folder_matches_prefix(
+                "ED541312A33F1128F10B1C6C54404762BBB6E853",
+                b"ED541312A33F1128F10B1C6C54404762BBB6E853/"
+            ),
+            Some(&b""[..])
+        );
+        assert_eq!(
+            folder_matches_prefix(
+                "ED541312A33F1128F10B1C6C54404762BBB6E853",
+                b"ED541312A33F1128F10B1C6C54404762BBB6E853/sha256:"
+            ),
+            Some(&b"sha256:"[..])
+        );
+        assert_eq!(folder_matches_prefix(
+            "ED541312A33F1128F10B1C6C54404762BBB6E853",
+            b"ED541312A33F1128F10B1C6C54404762BBB6E853/sha256:ffe924d86aa74fdfe8b8d4b8cd9623c5df7aef626a7aada3416dc83e44e7939d"
+        ), Some(&b"sha256:ffe924d86aa74fdfe8b8d4b8cd9623c5df7aef626a7aada3416dc83e44e7939d"[..]));
+    }
+
+    #[test]
+    fn test_folder_folder_matches_prefix_bad_inputs() {
+        assert_eq!(
+            folder_matches_prefix(
+                "ED541312A33F1128F10B1C6C54404762BBB6E853",
+                b"ED541312A33F1128F10B1C6C54404762BBB6E853//"
+            ),
+            Some(&b"/"[..])
+        );
+        assert_eq!(
+            folder_matches_prefix(
+                "ED541312A33F1128F10B1C6C54404762BBB6E853",
+                b"ED541312A33F1128F10B1C6C54404762BBB6E8533"
+            ),
+            None
+        );
+        assert_eq!(
+            folder_matches_prefix(
+                "ED541312A33F1128F10B1C6C54404762BBB6E853",
+                b"ED541312A33F1128F10B1C6C54404762BBB6E85333"
+            ),
+            None
+        );
+        assert_eq!(
+            folder_matches_prefix(
+                "ED541312A33F1128F10B1C6C54404762BBB6E853",
+                b"ED541312A33F1128F10B1C6C54404762BBB6E8533/"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_file_matches_prefix() {
+        assert!(file_matches_prefix("sha256:ff", b""));
+        assert!(file_matches_prefix("sha256:ff", b"sha"));
+        assert!(file_matches_prefix("sha256:ff", b"sha256:"));
+        assert!(file_matches_prefix("sha256:ff", b"sha256:f"));
+        assert!(file_matches_prefix("sha256:ff", b"sha256:ffe"));
+        assert!(file_matches_prefix(
+            "sha256:ff",
+            b"sha256:ffe924d86aa74fdfe8b8d4b8cd9623c5df7aef626a7aada34"
+        ));
+        assert!(!file_matches_prefix("sha256:ff", b"sha256:e"));
+        assert!(!file_matches_prefix("sha256:ff", b"sha256:fe"));
+        assert!(!file_matches_prefix(
+            "sha512:ff",
+            b"sha256:ffe924d86aa74fdfe8b8d4b8cd9623c5df7aef626a7aada34"
+        ));
+        assert!(!file_matches_prefix(
+            "sha256:ff",
+            b"sha512:ffe924d86aa74fdfe8b8d4b8cd9623c5df7aef626a7aada34"
+        ));
     }
 }
