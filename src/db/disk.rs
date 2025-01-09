@@ -1,4 +1,7 @@
-use super::{header::BlockHeader, DatabaseClient, DatabaseHandle, DatabaseUnixClient};
+use super::{
+    header::{BlockHeader, CryptoHash},
+    DatabaseClient, DatabaseHandle, DatabaseUnixClient,
+};
 use crate::config::Config;
 use crate::db;
 use crate::errors::*;
@@ -6,13 +9,9 @@ use crate::signed::Signed;
 use crate::sync;
 use async_trait::async_trait;
 use bstr::BStr;
-use bstr::ByteSlice;
 use futures::{Stream, StreamExt};
 use sequoia_openpgp::Fingerprint;
-use sha2::{Digest, Sha256};
-use std::ffi::OsStr;
 use std::io::ErrorKind;
-use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -25,10 +24,6 @@ pub const SHARD_ID_SIZE: usize = 2;
 pub enum AccessMode {
     Exclusive,
     Relaxed,
-}
-
-fn is_valid_key_fp(bytes: &[u8]) -> bool {
-    bytes.iter().all(|b| matches!(b, b'0'..=b'9' | b'A'..=b'F'))
 }
 
 fn folder_matches_prefix<'a>(folder: &str, full_prefix: &'a [u8]) -> Option<&'a [u8]> {
@@ -64,15 +59,10 @@ pub struct Database {
 impl DatabaseClient for Database {
     async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<String> {
         let normalized = signed.to_clear_signed()?;
+        let hash = CryptoHash::calculate(&normalized);
 
-        let mut hasher = Sha256::new();
-        hasher.update(&normalized);
-        let result = hasher.finalize();
-        let hash = format!("{fp:X}/sha256:{result:x}");
-
-        info!("Adding release to database: {hash:?}");
-        self.insert(hash.as_bytes(), &normalized).await?;
-        Ok(hash)
+        let (key, _new) = self.insert(fp, hash, &normalized).await?;
+        Ok(key)
     }
 
     async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {
@@ -160,43 +150,44 @@ impl Database {
 
     // TODO: this function should expect some fingerprint and CryptoHash argument (maybe?)
     // TODO: this function is only used in one place and can be easily changed
-    pub async fn insert<K: AsRef<[u8]>>(&self, key: K, value: &[u8]) -> Result<()> {
+    pub async fn insert(
+        &self,
+        fp: &Fingerprint,
+        hash: CryptoHash,
+        value: &[u8],
+    ) -> Result<(String, bool)> {
         if self.mode != AccessMode::Exclusive {
             bail!("Tried to perform insert on readonly database");
         }
 
-        // TODO
-        let key = key.as_ref();
+        // TODO: check if we can clean this up further
+        let fp_str = format!("{fp:X}");
+        let hash_str = hash.as_str();
+        let key = format!("{fp_str}/{hash_str}");
 
-        if self.get(key).await?.is_some() {
-            debug!("Skipping insert, document is already present");
-            return Ok(());
+        if self.get(&key).await?.is_some() {
+            info!("Skipping document, already present: {key:?}");
+            return Ok((key, false));
         }
+        info!("Adding document to database: {key:?}");
 
-        let (fp, hash) = key
-            .split_once_str(&"/")
-            .with_context(|| anyhow!("Invalid insert key: {key:?}"))?;
-        if !is_valid_key_fp(fp) {
-            bail!("Key fingerprint contains invalid characters");
-        }
-
-        let idx = memchr::memchr(b':', hash)
+        let idx = hash_str
+            .find(':')
             .with_context(|| anyhow!("Missing hash id in key: {key:?}"))?;
 
-        let (shard, _) = hash
+        let (shard, _) = hash_str
             .split_at_checked(idx + 1 + SHARD_ID_SIZE)
             .with_context(|| anyhow!("Key is too short: {key:?}"))?;
 
-        let folder = self.path.join(OsStr::from_bytes(fp));
+        let folder = self.path.join(fp_str);
         fs::create_dir_all(&folder)
             .await
             .with_context(|| anyhow!("Failed to create folder: {folder:?}"))?;
+        let path = folder.join(shard);
 
-        let path = folder.join(OsStr::from_bytes(shard));
+        // TODO: compress
 
-        // TODO: this can be defered from the key + .len()
-        // TODO: but also maybe the key shouldn't be so opaque
-        let header = BlockHeader::calculate(value);
+        let header = BlockHeader::new(hash, value.len());
 
         // TODO: check the file is in a clean state
 
@@ -216,7 +207,7 @@ impl Database {
             .await
             .context("Failed to write block data")?;
 
-        Ok(())
+        Ok((key, true))
     }
 
     async fn read_directory_sorted(path: &Path) -> Result<Vec<(PathBuf, String)>> {

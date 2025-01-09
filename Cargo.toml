@@ -38,6 +38,7 @@ ipnetwork = "0.21"
 irc = { version = "1", default-features = false, features = ["tls-rust"] }
 log = "0.4.17"
 lru = "0.12"
+lz4_flex = "0.11.3"
 memchr = "2.5.0"
 num-format = "0.4.4"
 reqwest = { version = "0.12", features = ["rustls-tls", "socks"], default-features = false }

@@ -9,6 +9,10 @@ pub type DataLength = u64;
 pub struct CryptoHash(pub String);
 
 impl CryptoHash {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
     #[inline]
     fn split_marker(bytes: &[u8]) -> Result<(&[u8], &[u8])> {
         let offset = memchr::memchr(b':', bytes).context("Failed to find hash id marker `:`")?;
@@ -47,6 +51,13 @@ impl CryptoHash {
 
         Ok(hash)
     }
+
+    pub fn calculate(bytes: &[u8]) -> Self {
+        let mut hasher = Sha256::new();
+        hasher.update(bytes);
+        let result = hasher.finalize();
+        CryptoHash(format!("sha256:{result:x}"))
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -56,6 +67,13 @@ pub struct BlockHeader {
 }
 
 impl BlockHeader {
+    pub fn new(hash: CryptoHash, length: usize) -> Self {
+        Self {
+            hash,
+            length: length as u64,
+        }
+    }
+
     pub async fn parse<R: AsyncRead + Unpin>(mut reader: R) -> Result<(Self, usize)> {
         let mut n = 0;
 
@@ -108,16 +126,6 @@ impl BlockHeader {
         n += data_length_bytes.len();
 
         Ok(n)
-    }
-
-    pub fn calculate(bytes: &[u8]) -> Self {
-        let mut hasher = Sha256::new();
-        hasher.update(bytes);
-        let result = hasher.finalize();
-        Self {
-            hash: CryptoHash(format!("sha256:{result:x}")),
-            length: bytes.len() as u64,
-        }
     }
 }
 
