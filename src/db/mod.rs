@@ -1,5 +1,6 @@
 pub mod channel;
 pub mod disk;
+pub mod header;
 pub mod unix;
 
 pub use self::channel::{DatabaseServer, DatabaseServerClient};

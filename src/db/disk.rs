@@ -1,8 +1,7 @@
-use super::{DatabaseClient, DatabaseHandle, DatabaseUnixClient};
+use super::{header::BlockHeader, DatabaseClient, DatabaseHandle, DatabaseUnixClient};
 use crate::config::Config;
 use crate::db;
 use crate::errors::*;
-use crate::newdb::header::BlockHeader;
 use crate::signed::Signed;
 use crate::sync;
 use async_trait::async_trait;
