@@ -193,7 +193,7 @@ impl BatchIndex {
 pub async fn connect(addr: SocketAddr, proxy: Option<SocketAddr>) -> Result<TcpStream> {
     let target = proxy.unwrap_or(addr);
 
-    debug!("Creating tcp connection to {target:?}");
+    info!("Creating tcp connection to {target:?}");
     let sock = TcpStream::connect(target);
     let mut sock = time::timeout(CONNECT_TIMEOUT, sock)
         .await
