@@ -225,7 +225,7 @@ pub async fn index_from_scan(db: &Database, query: &Query) -> Result<(String, us
     let stream = db.scan_prefix(prefix.as_bytes());
     tokio::pin!(stream);
     while let Some(item) = stream.next().await {
-        let (hash, _data) = item.context("Failed to read from database")?;
+        let (hash, _data) = item.context("Failed to read from database (index_from_scan)")?;
         hasher.update(&hash);
         hasher.update(b"\n");
         counter += 1;

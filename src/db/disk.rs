@@ -86,17 +86,14 @@ impl DatabaseClient for Database {
         let stream = self.scan_prefix(prefix);
         tokio::pin!(stream);
         while let Some(item) = stream.next().await {
-            let (hash, _data) = item.context("Failed to read from database")?;
+            let (hash, _data) = item.context("Failed to read from database (scan_keys)")?;
             out.push(hash);
         }
         Ok(out)
     }
 
     async fn get_value(&self, key: &[u8]) -> Result<db::Value> {
-        let value = self
-            .get(key)
-            .await
-            .context("Failed to read from database")?;
+        let value = self.get(key).await?;
         let value = value.context("Key not found in database")?;
         Ok(value)
     }
@@ -158,7 +155,8 @@ impl Database {
         let Some(entry) = stream.next().await else {
             return Ok(None);
         };
-        Ok(Some(entry?.1))
+        let entry = entry.context("Failed to read from database (get)")?;
+        Ok(Some(entry.1))
     }
 
     // TODO: this function should expect some fingerprint and CryptoHash argument (maybe?)
@@ -232,7 +230,11 @@ impl Database {
         };
 
         let mut out = Vec::new();
-        while let Some(entry) = dir.next_entry().await? {
+        while let Some(entry) = dir
+            .next_entry()
+            .await
+            .with_context(|| anyhow!("Failed to read next directory entry: {path:?}"))?
+        {
             let path = entry.path();
 
             let filename = entry
@@ -261,18 +263,28 @@ impl Database {
 
         loop {
             // check if more data is available
-            if reader.fill_buf().await?.is_empty() {
+            if reader
+                .fill_buf()
+                .await
+                .with_context(|| anyhow!("Failed to check for end of file: {path:?}"))?
+                .is_empty()
+            {
                 // reached EOF
                 break;
             }
 
-            let (header, _n) = BlockHeader::parse(&mut reader).await?;
+            let (header, _n) = BlockHeader::parse(&mut reader)
+                .await
+                .with_context(|| anyhow!("Failed to read block header: {path:?}"))?;
 
             debug!("Parsed block header: {header:?}");
             // TODO: this shouldn't automatically read the value into memory
             // TODO: this won't work correctly on 32 bit with very large files
             let mut buf = vec![0u8; header.length as usize];
-            reader.read_exact(&mut buf).await?;
+            reader
+                .read_exact(&mut buf)
+                .await
+                .with_context(|| anyhow!("Failed to read block data: {path:?}"))?;
 
             // if header is eligible, add to list
             if header.hash.0.as_bytes().starts_with(partitioned_prefix) {
