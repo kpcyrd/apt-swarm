@@ -1,9 +1,9 @@
 use super::{DatabaseClient, DatabaseHandle, DatabaseUnixClient};
 use crate::config::Config;
+use crate::db;
 use crate::errors::*;
 use crate::newdb::header::BlockHeader;
 use crate::signed::Signed;
-use crate::sled;
 use crate::sync;
 use async_trait::async_trait;
 use bstr::BStr;
@@ -81,7 +81,7 @@ impl DatabaseClient for Database {
     }
 
     // TODO: switch this to stream too
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>> {
+    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<db::Key>> {
         let mut out = Vec::new();
         let stream = self.scan_prefix(prefix);
         tokio::pin!(stream);
@@ -92,7 +92,7 @@ impl DatabaseClient for Database {
         Ok(out)
     }
 
-    async fn get_value(&self, key: &[u8]) -> Result<sled::IVec> {
+    async fn get_value(&self, key: &[u8]) -> Result<db::Value> {
         let value = self
             .get(key)
             .await
@@ -152,7 +152,7 @@ impl Database {
         Ok(Database { path, mode })
     }
 
-    pub async fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<sled::IVec>> {
+    pub async fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<db::Value>> {
         let stream = self.scan_prefix(key.as_ref());
         tokio::pin!(stream);
         let Some(entry) = stream.next().await else {
@@ -251,7 +251,7 @@ impl Database {
         path: &Path,
         folder_name: &str,
         partitioned_prefix: &[u8],
-    ) -> Result<Vec<(sled::IVec, sled::IVec)>> {
+    ) -> Result<Vec<(db::Key, db::Value)>> {
         let file = fs::File::open(path)
             .await
             .with_context(|| anyhow!("Failed to open database file: {path:?}"))?;
@@ -288,7 +288,7 @@ impl Database {
     pub fn scan_prefix<'a>(
         &'a self,
         prefix: &'a [u8],
-    ) -> impl Stream<Item = Result<(sled::IVec, sled::IVec)>> + 'a {
+    ) -> impl Stream<Item = Result<(db::Key, db::Value)>> + 'a {
         async_stream::try_stream! {
             for (folder_path, folder_name) in Self::read_directory_sorted(&self.path).await? {
                 if !folder_path.is_dir() {

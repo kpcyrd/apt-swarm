@@ -11,12 +11,5 @@ pub mod plumbing;
 pub mod signed;
 pub mod sync;
 
-// deprecated
-pub mod sled {
-    pub type IVec = Vec<u8>;
-    pub type Db = ();
-    pub type Iter = ();
-}
-
 #[cfg(fuzzing)]
 pub use sequoia_openpgp;

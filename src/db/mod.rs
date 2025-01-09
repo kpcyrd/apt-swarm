@@ -8,10 +8,12 @@ pub use self::unix::{DatabaseHandle, DatabaseUnixClient};
 
 use crate::errors::*;
 use crate::signed::Signed;
-use crate::sled;
 use crate::sync;
 use async_trait::async_trait;
 use sequoia_openpgp::Fingerprint;
+
+pub type Key = Vec<u8>;
+pub type Value = Vec<u8>;
 
 #[async_trait]
 pub trait DatabaseClient {
@@ -48,9 +50,9 @@ pub trait DatabaseClient {
         Ok((batch, total))
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>>;
+    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<Key>>;
 
-    async fn get_value(&self, key: &[u8]) -> Result<sled::IVec>;
+    async fn get_value(&self, key: &[u8]) -> Result<Value>;
 
     async fn count(&mut self, prefix: &[u8]) -> Result<u64>;
 

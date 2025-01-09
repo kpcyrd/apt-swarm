@@ -1,7 +1,7 @@
 use super::{Database, DatabaseClient};
+use crate::db;
 use crate::errors::*;
 use crate::signed::Signed;
-use crate::sled;
 use crate::sync;
 use async_trait::async_trait;
 use bstr::BString;
@@ -123,11 +123,11 @@ impl DatabaseClient for DatabaseUnixClient {
         }
     }
 
-    async fn scan_keys(&self, _prefix: &[u8]) -> Result<Vec<sled::IVec>> {
+    async fn scan_keys(&self, _prefix: &[u8]) -> Result<Vec<db::Key>> {
         todo!("DatabaseUnixClient::scan_keys")
     }
 
-    async fn get_value(&self, _key: &[u8]) -> Result<sled::IVec> {
+    async fn get_value(&self, _key: &[u8]) -> Result<db::Value> {
         todo!("DatabaseUnixClient::get_value")
     }
 
@@ -170,14 +170,14 @@ impl DatabaseClient for DatabaseHandle {
         }
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>> {
+    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<db::Key>> {
         match self {
             Self::Direct(db) => db.scan_keys(prefix).await,
             Self::Unix(unix) => unix.scan_keys(prefix).await,
         }
     }
 
-    async fn get_value(&self, key: &[u8]) -> Result<sled::IVec> {
+    async fn get_value(&self, key: &[u8]) -> Result<db::Value> {
         match self {
             Self::Direct(db) => db.get_value(key).await,
             Self::Unix(unix) => unix.get_value(key).await,

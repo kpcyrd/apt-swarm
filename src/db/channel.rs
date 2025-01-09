@@ -1,7 +1,7 @@
 use super::{Database, DatabaseClient};
+use crate::db;
 use crate::errors::*;
 use crate::signed::Signed;
-use crate::sled;
 use crate::sync;
 use async_trait::async_trait;
 use sequoia_openpgp::Fingerprint;
@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 pub enum Query {
     AddRelease(Fingerprint, Signed, mpsc::Sender<String>),
     IndexFromScan(sync::Query, mpsc::Sender<(String, usize)>),
-    ScanKeys(Vec<u8>, mpsc::Sender<Vec<sled::IVec>>),
-    GetValue(Vec<u8>, mpsc::Sender<sled::IVec>),
+    ScanKeys(Vec<u8>, mpsc::Sender<Vec<db::Key>>),
+    GetValue(Vec<u8>, mpsc::Sender<db::Value>),
     // Delete(Vec<u8>, mpsc::Sender<()>),
     Count(Vec<u8>, mpsc::Sender<u64>),
     Flush(mpsc::Sender<()>),
@@ -95,13 +95,13 @@ impl DatabaseClient for DatabaseServerClient {
         self.request(query, rx).await
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>> {
+    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<db::Key>> {
         let (tx, rx) = mpsc::channel(1);
         let query = Query::ScanKeys(prefix.to_vec(), tx);
         self.request(query, rx).await
     }
 
-    async fn get_value(&self, key: &[u8]) -> Result<sled::IVec> {
+    async fn get_value(&self, key: &[u8]) -> Result<db::Value> {
         let (tx, rx) = mpsc::channel(1);
         let query = Query::GetValue(key.to_vec(), tx);
         self.request(query, rx).await
