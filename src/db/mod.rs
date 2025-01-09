@@ -1,4 +1,5 @@
 pub mod channel;
+pub mod compression;
 pub mod disk;
 pub mod header;
 pub mod unix;

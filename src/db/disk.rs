@@ -1,4 +1,5 @@
 use super::{
+    compression,
     header::{BlockHeader, CryptoHash},
     DatabaseClient, DatabaseHandle, DatabaseUnixClient,
 };
@@ -185,9 +186,10 @@ impl Database {
             .with_context(|| anyhow!("Failed to create folder: {folder:?}"))?;
         let path = folder.join(shard);
 
-        // TODO: compress
-
-        let header = BlockHeader::new(hash, value.len());
+        let compressed = compression::compress(value)
+            .await
+            .with_context(|| anyhow!("Failed to compress block data: {path:?}"))?;
+        let header = BlockHeader::new(hash, compressed.len());
 
         // TODO: check the file is in a clean state
 
@@ -203,7 +205,7 @@ impl Database {
             .write(&mut file)
             .await
             .context("Failed to write block header")?;
-        file.write_all(value)
+        file.write_all(&compressed)
             .await
             .context("Failed to write block data")?;
 
@@ -270,16 +272,20 @@ impl Database {
             debug!("Parsed block header: {header:?}");
             // TODO: this shouldn't automatically read the value into memory
             // TODO: this won't work correctly on 32 bit with very large files
-            let mut buf = vec![0u8; header.length as usize];
+            let mut compressed = vec![0u8; header.length as usize];
             reader
-                .read_exact(&mut buf)
+                .read_exact(&mut compressed)
                 .await
                 .with_context(|| anyhow!("Failed to read block data: {path:?}"))?;
+
+            let data = compression::decompress(&compressed)
+                .await
+                .with_context(|| anyhow!("Failed to decompress block data: {path:?}"))?;
 
             // if header is eligible, add to list
             if header.hash.0.as_bytes().starts_with(partitioned_prefix) {
                 let key = format!("{}/{}", folder_name, header.hash.0);
-                out.push((key.into_bytes(), buf));
+                out.push((key.into_bytes(), data));
             }
         }
 
