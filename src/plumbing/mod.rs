@@ -12,6 +12,7 @@ use crate::pgp;
 use crate::signed::Signed;
 use crate::sync;
 use bstr::BString;
+use futures::StreamExt;
 use gix::object::Kind;
 use std::borrow::Cow;
 use std::os::unix::ffi::OsStrExt;
@@ -243,7 +244,9 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
                 let migrate_db =
                     Database::open_at(migrate_path.clone(), AccessMode::Exclusive).await?;
 
-                for item in migrate_db.scan_prefix(&[]).await {
+                let stream = migrate_db.scan_prefix(&[]);
+                tokio::pin!(stream);
+                while let Some(item) = stream.next().await {
                     let (_key, value) = item?;
 
                     let (signed, _remaining) =

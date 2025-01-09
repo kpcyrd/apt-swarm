@@ -3,6 +3,7 @@ use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::signed::Signed;
 use bstr::BStr;
+use futures::StreamExt;
 use indexmap::{IndexMap, IndexSet};
 use sequoia_openpgp::Fingerprint;
 use sha2::{Digest, Sha256};
@@ -220,7 +221,10 @@ pub async fn index_from_scan(db: &Database, query: &Query) -> Result<(String, us
 
     let mut counter = 0;
     let mut hasher = Sha256::new();
-    for item in db.scan_prefix(prefix.as_bytes()).await {
+
+    let stream = db.scan_prefix(prefix.as_bytes());
+    tokio::pin!(stream);
+    while let Some(item) = stream.next().await {
         let (hash, _data) = item.context("Failed to read from database")?;
         hasher.update(&hash);
         hasher.update(b"\n");

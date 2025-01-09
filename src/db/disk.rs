@@ -8,12 +8,13 @@ use crate::sync;
 use async_trait::async_trait;
 use bstr::BStr;
 use bstr::ByteSlice;
+use futures::{Stream, StreamExt};
 use sequoia_openpgp::Fingerprint;
 use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::io::ErrorKind;
 use std::os::unix::ffi::OsStrExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
@@ -79,9 +80,12 @@ impl DatabaseClient for Database {
         sync::index_from_scan(self, query).await
     }
 
+    // TODO: switch this to stream too
     async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>> {
         let mut out = Vec::new();
-        for item in self.scan_prefix(prefix).await {
+        let stream = self.scan_prefix(prefix);
+        tokio::pin!(stream);
+        while let Some(item) = stream.next().await {
             let (hash, _data) = item.context("Failed to read from database")?;
             out.push(hash);
         }
@@ -109,12 +113,8 @@ impl DatabaseClient for Database {
     }
 
     async fn count(&mut self, prefix: &[u8]) -> Result<u64> {
-        warn!(
-            "Implementation of count is really bad: {:?}",
-            BStr::new(prefix)
-        );
-        let out = self.scan_prefix(prefix).await;
-        Ok(out.len() as u64)
+        let count = self.scan_prefix(prefix).count().await;
+        Ok(count as u64)
     }
 
     async fn flush(&mut self) -> Result<()> {
@@ -160,31 +160,13 @@ impl Database {
 
         // TODO: assert mode
 
-        /*
-        let mut config = sled::Config::default()
-            .path(path)
-            .use_compression(true)
-            // we don't really care about explicit flushing
-            .flush_every_ms(Some(10_000));
-
-        if let Some(db_cache_limit) = db_cache_limit {
-            debug!("Setting sled cache capacity to {db_cache_limit:?}");
-            config = config.cache_capacity(db_cache_limit);
-        }
-
-        let sled = config
-            .open()
-            .with_context(|| anyhow!("Failed to open database at {path:?}"))?;
-
-        Ok(Database { sled })
-        */
         Ok(Database { path, mode })
     }
 
     pub async fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<sled::IVec>> {
-        warn!("get_value implementation is crazy inefficient");
-        let out = self.scan_prefix(key.as_ref()).await;
-        let Some(entry) = out.into_iter().next() else {
+        let stream = self.scan_prefix(key.as_ref());
+        tokio::pin!(stream);
+        let Some(entry) = stream.next().await else {
             return Ok(None);
         };
         Ok(Some(entry?.1))
@@ -251,159 +233,96 @@ impl Database {
         Ok(())
     }
 
-    // TODO: rewrite this to be streaming again
-    // TODO: this is a nightmare function, but works for now
-    pub async fn scan_prefix(&self, prefix: &[u8]) -> Vec<Result<(sled::IVec, sled::IVec)>> {
-        warn!("TODO: scan_prefix needs to be rewritten to streaming");
-        let mut out = Vec::new();
-
-        // TODO: this definitely needs to be rewritten
-        // TODO: this should be sorted before processing
-        match fs::read_dir(&self.path).await {
-            Ok(mut dir) => loop {
-                match dir.next_entry().await {
-                    Ok(Some(folder)) => {
-                        let path = folder.path();
-
-                        if !path.is_dir() {
-                            warn!("Found unexpected file in storage folder: {path:?}");
-                            continue;
-                        }
-
-                        let folder_name = match folder.file_name().into_string() {
-                            Ok(name) => name,
-                            Err(err) => {
-                                out.push(Err(anyhow!("Found invalid key directory: {err:?}")));
-                                return out;
-                            }
-                        };
-
-                        let Some(partitioned_prefix) = folder_matches_prefix(&folder_name, prefix)
-                        else {
-                            continue;
-                        };
-
-                        // TODO: optimize: skip directory if it can't match prefix
-                        // TODO: this also needs sorting somehow
-                        match fs::read_dir(path).await {
-                            Ok(mut dir) => loop {
-                                match dir.next_entry().await {
-                                    Ok(Some(file)) => {
-                                        let path = file.path();
-
-                                        let filename = match file.file_name().into_string() {
-                                            Ok(name) => name,
-                                            Err(err) => {
-                                                out.push(Err(anyhow!(
-                                                    "Found invalid shard file: {err:?}"
-                                                )));
-                                                return out;
-                                            }
-                                        };
-
-                                        if !file_matches_prefix(&filename, partitioned_prefix) {
-                                            continue;
-                                        }
-
-                                        let file =
-                                            match fs::File::open(&path).await.with_context(|| {
-                                                anyhow!("Failed to open database file: {path:?}")
-                                            }) {
-                                                Ok(file) => file,
-                                                Err(err) => {
-                                                    out.push(Err(err));
-                                                    return out;
-                                                }
-                                            };
-                                        let mut reader = BufReader::new(file);
-                                        // TODO: this also needs sorting(??)
-                                        loop {
-                                            // TODO: check if more data is available (somehow)
-                                            match reader.fill_buf().await {
-                                                Ok(buf) => {
-                                                    if buf.is_empty() {
-                                                        // reached EOF
-                                                        break;
-                                                    }
-                                                }
-                                                Err(err) => {
-                                                    out.push(Err(err.into()));
-                                                    return out;
-                                                }
-                                            }
-
-                                            match BlockHeader::parse(&mut reader).await {
-                                                Ok((header, _n)) => {
-                                                    // TODO: if header eligible, add to list
-                                                    debug!("Parsed block header: {header:?}");
-                                                    // TODO: this shouldn't automatically read the value into memory
-                                                    // TODO: this won't work correctly on 32 bit with very large files
-                                                    let mut buf = vec![0u8; header.length as usize];
-                                                    match reader.read_exact(&mut buf).await {
-                                                        Ok(_) => {
-                                                            let key = format!(
-                                                                "{}/{}",
-                                                                folder_name, header.hash.0
-                                                            );
-                                                            if BStr::new(key.as_bytes())
-                                                                .starts_with(prefix)
-                                                            {
-                                                                out.push(Ok((
-                                                                    key.into_bytes(),
-                                                                    buf,
-                                                                )));
-                                                            }
-                                                        }
-                                                        Err(err) => {
-                                                            out.push(Err(err.into()));
-                                                            return out;
-                                                        }
-                                                    }
-                                                }
-                                                Err(err) => {
-                                                    out.push(Err(err));
-                                                    return out;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Ok(None) => break,
-                                    Err(err) => {
-                                        out.push(Err(err.into()));
-                                        return out;
-                                    }
-                                }
-                            },
-                            Err(err) => {
-                                out.push(Err(err.into()));
-                                return out;
-                            }
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(err) => {
-                        out.push(Err(err.into()));
-                        return out;
-                    }
-                }
-            },
+    async fn read_directory_sorted(path: &Path) -> Result<Vec<(PathBuf, String)>> {
+        let mut dir = match fs::read_dir(path).await {
+            Ok(dir) => dir,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(vec![]),
             Err(err) => {
-                if err.kind() != ErrorKind::NotFound {
-                    out.push(Err(err).context("Failed to read storage directory"));
-                    return out;
-                }
+                return Err(err).with_context(|| anyhow!("Failed to read directory: {path:?}"));
+            }
+        };
+
+        let mut out = Vec::new();
+        while let Some(entry) = dir.next_entry().await? {
+            let path = entry.path();
+
+            let filename = entry
+                .file_name()
+                .into_string()
+                .map_err(|err| anyhow!("Found invalid directory entry name: {err:?}"))?;
+
+            out.push((path, filename));
+        }
+
+        out.sort();
+        Ok(out)
+    }
+
+    async fn read_shard(
+        path: &Path,
+        folder_name: &str,
+        partitioned_prefix: &[u8],
+    ) -> Result<Vec<(sled::IVec, sled::IVec)>> {
+        let file = fs::File::open(path)
+            .await
+            .with_context(|| anyhow!("Failed to open database file: {path:?}"))?;
+
+        let mut out = Vec::new();
+        let mut reader = BufReader::new(file);
+
+        loop {
+            // check if more data is available
+            if reader.fill_buf().await?.is_empty() {
+                // reached EOF
+                break;
+            }
+
+            let (header, _n) = BlockHeader::parse(&mut reader).await?;
+
+            debug!("Parsed block header: {header:?}");
+            // TODO: this shouldn't automatically read the value into memory
+            // TODO: this won't work correctly on 32 bit with very large files
+            let mut buf = vec![0u8; header.length as usize];
+            reader.read_exact(&mut buf).await?;
+
+            // if header is eligible, add to list
+            if header.hash.0.as_bytes().starts_with(partitioned_prefix) {
+                let key = format!("{}/{}", folder_name, header.hash.0);
+                out.push((key.into_bytes(), buf));
             }
         }
 
-        out.sort_by(|a, b| {
-            if let (Ok(a), Ok(b)) = (a, b) {
-                a.cmp(b)
-            } else {
-                unreachable!("when adding an error to `out`, we should also return");
-            }
-        });
+        out.sort();
+        Ok(out)
+    }
 
-        out
+    pub fn scan_prefix<'a>(
+        &'a self,
+        prefix: &'a [u8],
+    ) -> impl Stream<Item = Result<(sled::IVec, sled::IVec)>> + 'a {
+        async_stream::try_stream! {
+            for (folder_path, folder_name) in Self::read_directory_sorted(&self.path).await? {
+                if !folder_path.is_dir() {
+                    warn!("Found unexpected file in storage folder: {folder_path:?}");
+                    continue;
+                }
+
+                let Some(partitioned_prefix) = folder_matches_prefix(&folder_name, prefix)
+                else {
+                    continue;
+                };
+
+                for (path, filename) in Self::read_directory_sorted(&folder_path).await? {
+                    if !file_matches_prefix(&filename, partitioned_prefix) {
+                        continue;
+                    }
+
+                    for item in Self::read_shard(&path, &folder_name, partitioned_prefix).await? {
+                        yield item;
+                    }
+                }
+            }
+        }
     }
 }
 

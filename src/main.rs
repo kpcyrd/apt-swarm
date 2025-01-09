@@ -11,6 +11,7 @@ use apt_swarm::sync;
 use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
+use futures::StreamExt;
 use num_format::{Locale, ToFormattedString};
 use sequoia_openpgp::KeyHandle;
 use std::os::unix::ffi::OsStrExt;
@@ -71,14 +72,18 @@ async fn main() -> Result<()> {
 
             let mut stdout = io::stdout();
             if export.release_hashes.is_empty() {
-                for item in db.scan_prefix(&[]).await {
+                let stream = db.scan_prefix(&[]);
+                tokio::pin!(stream);
+                while let Some(item) = stream.next().await {
                     let (_hash, data) = item.context("Failed to read from database")?;
                     stdout.write_all(&data).await?;
                 }
             } else {
                 for hash in &export.release_hashes {
                     if export.scan {
-                        for item in db.scan_prefix(hash.as_bytes()).await {
+                        let stream = db.scan_prefix(hash.as_bytes());
+                        tokio::pin!(stream);
+                        while let Some(item) = stream.next().await {
                             let (_hash, data) = item.context("Failed to read from database")?;
                             stdout.write_all(&data).await?;
                         }
@@ -122,7 +127,10 @@ async fn main() -> Result<()> {
 
             let mut stdout = io::stdout();
             let mut count = 0;
-            for item in db.scan_prefix(prefix).await {
+
+            let stream = db.scan_prefix(prefix);
+            tokio::pin!(stream);
+            while let Some(item) = stream.next().await {
                 if ls.count {
                     count += 1;
                     continue;
