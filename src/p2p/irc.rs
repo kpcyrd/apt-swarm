@@ -166,7 +166,7 @@ pub async fn spawn_irc(
         let Err(err) = connect_irc(&mut rx, &peering_tx).await;
         error!("irc connection has crashed: {err:#}");
 
-        time::sleep(p2p::IRC_RECONNECT_COOLDOWN - p2p::IRC_RECONNECT_JITTER).await;
+        time::sleep(p2p::IRC_RECONNECT_COOLDOWN).await;
         p2p::random_jitter(p2p::IRC_RECONNECT_JITTER).await;
     }
 }

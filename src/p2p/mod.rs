@@ -27,15 +27,17 @@ const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
 const UPDATE_CHECK_DEBOUNCE: Duration = Duration::from_secs(5);
 const UPDATE_SHUTDOWN_DELAY: Duration = Duration::from_secs(60 * 20); // 20min
 
+const P2P_SYNC_CONNECT_JITTER: Duration = Duration::from_secs(3);
+
 const GOSSIP_IDLE_ANNOUNCE_INTERVAL: Duration = Duration::from_secs(3600 * 24); // 1h, set this to 24h later
 const P2P_SYNC_PORT_BACKLOG: u32 = 1024;
 
 const IRC_DEBOUNCE: Duration = Duration::from_millis(250);
-const IRC_RECONNECT_COOLDOWN: Duration = Duration::from_secs(60 * 10); // 10min
-const IRC_RECONNECT_JITTER: Duration = Duration::from_secs(60 * 5); // 5min
+const IRC_RECONNECT_COOLDOWN: Duration = Duration::from_secs(60); // 1min
+const IRC_RECONNECT_JITTER: Duration = Duration::from_secs(60 * 3); // 3min
 
 pub async fn random_jitter(jitter: Duration) {
-    let jitter = fastrand::u64(..jitter.as_secs() * 2);
+    let jitter = fastrand::u64(..jitter.as_secs());
     time::sleep(Duration::from_secs(jitter)).await;
 }
 
