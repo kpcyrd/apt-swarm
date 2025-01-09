@@ -76,6 +76,9 @@ pub async fn spawn(
                 }
             };
             socket
+                .set_reuse_address(true)
+                .context("Failed to set reuseaddr for port")?;
+            socket
                 .set_nonblocking(true)
                 .context("Failed to set port to non-blocking")?;
             let socket = TcpSocket::from_std_stream(socket.into());
