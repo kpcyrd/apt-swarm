@@ -15,10 +15,8 @@ use bstr::BString;
 use futures::StreamExt;
 use gix::object::Kind;
 use std::borrow::Cow;
-use std::os::unix::ffi::OsStrExt;
 use tokio::fs;
-use tokio::io;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 
 pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
     match args {
@@ -71,15 +69,6 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
             let config = config?;
             let config = serde_json::to_string_pretty(&config.data)?;
             println!("{config}");
-        }
-        Plumbing::Delete(remove) => {
-            let config = config?;
-            let mut db = Database::open(&config, AccessMode::Exclusive).await?;
-
-            for key in remove.keys {
-                debug!("Deleting key {:?}", key);
-                db.delete(key.as_bytes()).await?;
-            }
         }
         Plumbing::Index(query) => {
             let config = config?;

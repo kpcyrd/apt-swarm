@@ -15,7 +15,7 @@ use tokio::net::UnixStream;
 pub enum Query {
     AddRelease(String, Signed),
     IndexFromScan(SyncQuery),
-    Delete(BString),
+    // Delete(BString),
     Count(BString),
     Flush,
 }
@@ -131,13 +131,6 @@ impl DatabaseClient for DatabaseUnixClient {
         todo!("DatabaseUnixClient::get_value")
     }
 
-    async fn delete(&mut self, key: &[u8]) -> Result<()> {
-        self.send_query(&Query::Delete(BString::new(key.to_vec())))
-            .await?;
-        self.recv_response().await?;
-        Ok(())
-    }
-
     async fn count(&mut self, prefix: &[u8]) -> Result<u64> {
         self.send_query(&Query::Count(BString::new(prefix.to_vec())))
             .await?;
@@ -188,13 +181,6 @@ impl DatabaseClient for DatabaseHandle {
         match self {
             Self::Direct(db) => db.get_value(key).await,
             Self::Unix(unix) => unix.get_value(key).await,
-        }
-    }
-
-    async fn delete(&mut self, key: &[u8]) -> Result<()> {
-        match self {
-            Self::Direct(db) => db.delete(key).await,
-            Self::Unix(unix) => unix.delete(key).await,
         }
     }
 

@@ -197,7 +197,6 @@ pub enum Plumbing {
     Fingerprint(Fingerprint),
     Paths(Paths),
     Config(Config),
-    Delete(Delete),
     Index(Index),
     SyncYield(SyncYield),
     SyncPull(SyncPull),
@@ -234,12 +233,6 @@ pub struct Paths {}
 /// Print applied configuration
 #[derive(Debug, Parser)]
 pub struct Config {}
-
-/// Delete keys from the database
-#[derive(Debug, Parser)]
-pub struct Delete {
-    pub keys: Vec<OsString>,
-}
 
 /// Scan the database and calculate the requested index
 #[derive(Debug, Parser)]

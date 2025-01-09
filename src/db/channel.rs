@@ -12,7 +12,7 @@ pub enum Query {
     IndexFromScan(sync::Query, mpsc::Sender<(String, usize)>),
     ScanKeys(Vec<u8>, mpsc::Sender<Vec<sled::IVec>>),
     GetValue(Vec<u8>, mpsc::Sender<sled::IVec>),
-    Delete(Vec<u8>, mpsc::Sender<()>),
+    // Delete(Vec<u8>, mpsc::Sender<()>),
     Count(Vec<u8>, mpsc::Sender<u64>),
     Flush(mpsc::Sender<()>),
 }
@@ -51,10 +51,6 @@ impl DatabaseServer {
                 Query::GetValue(key, tx) => {
                     let ret = self.db.get_value(&key).await?;
                     tx.send(ret).await.ok();
-                }
-                Query::Delete(key, tx) => {
-                    self.db.delete(&key).await?;
-                    tx.send(()).await.ok();
                 }
                 Query::Count(key, tx) => {
                     let ret = self.db.count(&key).await?;
@@ -108,12 +104,6 @@ impl DatabaseClient for DatabaseServerClient {
     async fn get_value(&self, key: &[u8]) -> Result<sled::IVec> {
         let (tx, rx) = mpsc::channel(1);
         let query = Query::GetValue(key.to_vec(), tx);
-        self.request(query, rx).await
-    }
-
-    async fn delete(&mut self, key: &[u8]) -> Result<()> {
-        let (tx, rx) = mpsc::channel(1);
-        let query = Query::Delete(key.to_vec(), tx);
         self.request(query, rx).await
     }
 

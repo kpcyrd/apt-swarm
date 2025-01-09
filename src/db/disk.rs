@@ -101,17 +101,6 @@ impl DatabaseClient for Database {
         Ok(value)
     }
 
-    async fn delete(&mut self, key: &[u8]) -> Result<()> {
-        /*
-        self.sled.remove(key)?;
-        Ok(())
-        */
-        if self.mode != AccessMode::Exclusive {
-            bail!("Tried to perform insert on readonly database");
-        }
-        todo!("sled(delete)")
-    }
-
     async fn count(&mut self, prefix: &[u8]) -> Result<u64> {
         let count = self.scan_prefix(prefix).count().await;
         Ok(count as u64)
