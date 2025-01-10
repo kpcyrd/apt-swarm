@@ -15,7 +15,7 @@ use sequoia_openpgp::Fingerprint;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, SeekFrom};
 
 pub const SHARD_ID_SIZE: usize = 2;
 
@@ -270,22 +270,29 @@ impl Database {
                 .with_context(|| anyhow!("Failed to read block header: {path:?}"))?;
 
             debug!("Parsed block header: {header:?}");
-            // TODO: this shouldn't automatically read the value into memory
-            // TODO: this won't work correctly on 32 bit with very large files
-            let mut compressed = vec![0u8; header.length as usize];
-            reader
-                .read_exact(&mut compressed)
-                .await
-                .with_context(|| anyhow!("Failed to read block data: {path:?}"))?;
-
-            let data = compression::decompress(&compressed)
-                .await
-                .with_context(|| anyhow!("Failed to decompress block data: {path:?}"))?;
-
-            // if header is eligible, add to list
             if header.hash.0.as_bytes().starts_with(partitioned_prefix) {
+                // header is eligible, add to list
+
+                // TODO: this shouldn't automatically read the value into memory
+                // TODO: this won't work correctly on 32 bit with very large files
+                let mut compressed = vec![0u8; header.length as usize];
+                reader
+                    .read_exact(&mut compressed)
+                    .await
+                    .with_context(|| anyhow!("Failed to read block data: {path:?}"))?;
+
+                let data = compression::decompress(&compressed)
+                    .await
+                    .with_context(|| anyhow!("Failed to decompress block data: {path:?}"))?;
+
                 let key = format!("{}/{}", folder_name, header.hash.0);
                 out.push((key.into_bytes(), data));
+            } else {
+                // does not match prefix, skip over it
+                reader
+                    .seek(SeekFrom::Current(header.length as i64))
+                    .await
+                    .with_context(|| anyhow!("Failed to seek over block data: {path:?}"))?;
             }
         }
 
