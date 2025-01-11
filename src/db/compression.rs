@@ -1,7 +1,7 @@
 use crate::errors::*;
 use std::io::{Read, Write};
 
-const CHUNK_SIZE: usize = 4096;
+const CHUNK_SIZE: usize = 1024 * 1024 * 4; // 4MB
 
 pub async fn compress(bytes: &[u8]) -> Result<Vec<u8>> {
     let mut compressed = Vec::new();
@@ -22,10 +22,11 @@ pub async fn decompress(compressed: &[u8]) -> Result<Vec<u8>> {
     let mut data = Vec::new();
 
     let mut reader = lz4_flex::frame::FrameDecoder::new(compressed);
-    let mut buf = [0u8; CHUNK_SIZE];
+    // put this array on the heap due to it's size
+    let mut buf = vec![0u8; CHUNK_SIZE];
     loop {
         let n = reader
-            .read(&mut buf)
+            .read(&mut buf[..])
             .context("Failed to read from decompression stream")?;
         if n == 0 {
             break;
