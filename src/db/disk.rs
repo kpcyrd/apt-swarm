@@ -1,5 +1,5 @@
 use super::{
-    compression,
+    compression, exclusive,
     header::{BlockHeader, CryptoHash},
     DatabaseClient, DatabaseHandle, DatabaseUnixClient,
 };
@@ -53,7 +53,7 @@ fn file_matches_prefix(file: &str, prefix: &[u8]) -> bool {
 #[derive(Debug)]
 pub struct Database {
     path: PathBuf,
-    mode: AccessMode,
+    lock: Option<exclusive::Lock>,
 }
 
 #[async_trait]
@@ -107,6 +107,11 @@ impl DatabaseClient for Database {
 }
 
 impl Database {
+    #[inline]
+    fn is_exclusive(&self) -> bool {
+        self.lock.is_some()
+    }
+
     pub async fn open(config: &Config, mode: AccessMode) -> Result<DatabaseHandle> {
         let sock_path = config.db_socket_path()?;
 
@@ -134,9 +139,14 @@ impl Database {
             .await
             .with_context(|| anyhow!("Failed to create directory: {path:?}"))?;
 
-        // TODO: assert mode
+        let lock = if mode == AccessMode::Exclusive {
+            let lock = exclusive::Lock::acquire(&path).await?;
+            Some(lock)
+        } else {
+            None
+        };
 
-        Ok(Database { path, mode })
+        Ok(Database { path, lock })
     }
 
     pub async fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<db::Value>> {
@@ -157,7 +167,7 @@ impl Database {
         hash: CryptoHash,
         value: &[u8],
     ) -> Result<(String, bool)> {
-        if self.mode != AccessMode::Exclusive {
+        if !self.is_exclusive() {
             bail!("Tried to perform insert on readonly database");
         }
 
