@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
 
             let mut stdout = io::stdout();
             if export.release_hashes.is_empty() {
-                let stream = db.scan_prefix(&[]);
+                let stream = db.scan_values(&[]);
                 tokio::pin!(stream);
                 while let Some(item) = stream.next().await {
                     let (_hash, data) = item.context("Failed to read from database")?;
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
             } else {
                 for hash in &export.release_hashes {
                     if export.scan {
-                        let stream = db.scan_prefix(hash.as_bytes());
+                        let stream = db.scan_values(hash.as_bytes());
                         tokio::pin!(stream);
                         while let Some(item) = stream.next().await {
                             let (_hash, data) = item.context("Failed to read from database")?;

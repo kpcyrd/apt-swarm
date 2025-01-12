@@ -1,5 +1,7 @@
 use super::{
-    compression, exclusive,
+    compression, consume,
+    consume::Consume as _,
+    exclusive,
     header::{BlockHeader, CryptoHash},
     DatabaseClient, DatabaseHandle, DatabaseUnixClient,
 };
@@ -15,7 +17,7 @@ use sequoia_openpgp::Fingerprint;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, SeekFrom};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 pub const SHARD_ID_SIZE: usize = 2;
 
@@ -72,7 +74,7 @@ impl DatabaseClient for Database {
 
     async fn spill(&self, prefix: &[u8]) -> Result<Vec<(db::Key, db::Value)>> {
         let mut out = Vec::new();
-        let stream = self.scan_prefix(prefix);
+        let stream = self.scan_values(prefix);
         tokio::pin!(stream);
         while let Some(item) = stream.next().await {
             let (hash, data) = item.context("Failed to read from database (spill)")?;
@@ -88,7 +90,7 @@ impl DatabaseClient for Database {
     }
 
     async fn count(&mut self, prefix: &[u8]) -> Result<u64> {
-        let count = self.scan_prefix(prefix).count().await;
+        let count = self.scan_keys(prefix).count().await;
         Ok(count as u64)
     }
 
@@ -149,7 +151,7 @@ impl Database {
     }
 
     pub async fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<db::Value>> {
-        let stream = self.scan_prefix(key.as_ref());
+        let stream = self.scan_values(key.as_ref());
         tokio::pin!(stream);
         let Some(entry) = stream.next().await else {
             return Ok(None);
@@ -250,11 +252,11 @@ impl Database {
         Ok(out)
     }
 
-    async fn read_shard(
+    async fn read_shard<C: consume::Consume>(
         path: &Path,
         folder_name: &str,
         partitioned_prefix: &[u8],
-    ) -> Result<Vec<(db::Key, db::Value)>> {
+    ) -> Result<Vec<(db::Key, C::Item)>> {
         let file = fs::File::open(path)
             .await
             .with_context(|| anyhow!("Failed to open database file: {path:?}"))?;
@@ -281,27 +283,17 @@ impl Database {
             debug!("Parsed block header: {header:?}");
             if header.hash.0.as_bytes().starts_with(partitioned_prefix) {
                 // header is eligible, add to list
-
-                // TODO: this shouldn't automatically read the value into memory
-                // TODO: this won't work correctly on 32 bit with very large files
-                let mut compressed = vec![0u8; header.length as usize];
-                reader
-                    .read_exact(&mut compressed)
+                let data = C::consume(&mut reader, &header)
                     .await
-                    .with_context(|| anyhow!("Failed to read block data: {path:?}"))?;
-
-                let data = compression::decompress(&compressed)
-                    .await
-                    .with_context(|| anyhow!("Failed to decompress block data: {path:?}"))?;
+                    .with_context(|| anyhow!("Failed to process block: {path:?}"))?;
 
                 let key = format!("{}/{}", folder_name, header.hash.0);
                 out.push((key.into_bytes(), data));
             } else {
                 // does not match prefix, skip over it
-                reader
-                    .seek(SeekFrom::Current(header.length as i64))
+                consume::SkipValue::consume(&mut reader, &header)
                     .await
-                    .with_context(|| anyhow!("Failed to seek over block data: {path:?}"))?;
+                    .with_context(|| anyhow!("Failed to process block: {path:?}"))?;
             }
         }
 
@@ -310,14 +302,21 @@ impl Database {
     }
 
     pub fn scan_keys<'a>(&'a self, prefix: &'a [u8]) -> impl Stream<Item = Result<db::Key>> + 'a {
-        self.scan_prefix(prefix)
+        self.scan_prefix::<consume::SkipValue>(prefix)
             .map(|item| item.map(|(key, _value)| key))
     }
 
-    pub fn scan_prefix<'a>(
+    pub fn scan_values<'a>(
         &'a self,
         prefix: &'a [u8],
     ) -> impl Stream<Item = Result<(db::Key, db::Value)>> + 'a {
+        self.scan_prefix::<consume::ReadValue>(prefix)
+    }
+
+    fn scan_prefix<'a, C: consume::Consume>(
+        &'a self,
+        prefix: &'a [u8],
+    ) -> impl Stream<Item = Result<(db::Key, C::Item)>> + 'a {
         async_stream::try_stream! {
             for (folder_path, folder_name) in Self::read_directory_sorted(&self.path).await? {
                 if !folder_path.is_dir() {
@@ -335,7 +334,7 @@ impl Database {
                         continue;
                     }
 
-                    for item in Self::read_shard(&path, &folder_name, partitioned_prefix).await? {
+                    for item in Self::read_shard::<C>(&path, &folder_name, partitioned_prefix).await? {
                         yield item;
                     }
                 }

@@ -233,7 +233,7 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
                 let migrate_db =
                     Database::open_at(migrate_path.clone(), AccessMode::Exclusive).await?;
 
-                let stream = migrate_db.scan_prefix(&[]);
+                let stream = migrate_db.scan_values(&[]);
                 tokio::pin!(stream);
                 while let Some(item) = stream.next().await {
                     let (_key, value) = item?;

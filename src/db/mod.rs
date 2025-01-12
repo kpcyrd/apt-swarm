@@ -1,5 +1,6 @@
 pub mod channel;
 pub mod compression;
+pub mod consume;
 pub mod disk;
 pub mod exclusive;
 pub mod header;
