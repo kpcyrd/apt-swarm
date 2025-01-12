@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
         SubCommand::Ls(ls) => {
             let config = config?;
             // TODO: this should call open(), but needs to be rewritten because
-            // .scan_prefix is not available over unix domain socket
+            // .scan_keys is not available over unix domain socket
             let db = Database::open_directly(&config, AccessMode::Relaxed).await?;
 
             let prefix = if let Some(prefix) = &ls.prefix {
@@ -128,14 +128,14 @@ async fn main() -> Result<()> {
             let mut stdout = io::stdout();
             let mut count = 0;
 
-            let stream = db.scan_prefix(prefix);
+            let stream = db.scan_keys(prefix);
             tokio::pin!(stream);
             while let Some(item) = stream.next().await {
                 if ls.count {
                     count += 1;
                     continue;
                 }
-                let (hash, _data) = item.context("Failed to read from database")?;
+                let hash = item.context("Failed to read from database")?;
                 stdout.write_all(&hash).await?;
                 stdout.write_all(b"\n").await?;
             }

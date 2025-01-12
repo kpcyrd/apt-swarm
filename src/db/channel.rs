@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 pub enum Query {
     AddRelease(Fingerprint, Signed, mpsc::Sender<String>),
     IndexFromScan(sync::Query, mpsc::Sender<(String, usize)>),
-    ScanKeys(Vec<u8>, mpsc::Sender<Vec<db::Key>>),
+    Spill(Vec<u8>, mpsc::Sender<Vec<(db::Key, db::Value)>>),
     GetValue(Vec<u8>, mpsc::Sender<db::Value>),
     // Delete(Vec<u8>, mpsc::Sender<()>),
     Count(Vec<u8>, mpsc::Sender<u64>),
@@ -44,8 +44,8 @@ impl DatabaseServer {
                     let ret = self.db.index_from_scan(&query).await?;
                     tx.send(ret).await.ok();
                 }
-                Query::ScanKeys(prefix, tx) => {
-                    let ret = self.db.scan_keys(&prefix).await?;
+                Query::Spill(prefix, tx) => {
+                    let ret = self.db.spill(&prefix).await?;
                     tx.send(ret).await.ok();
                 }
                 Query::GetValue(key, tx) => {
@@ -95,9 +95,9 @@ impl DatabaseClient for DatabaseServerClient {
         self.request(query, rx).await
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<db::Key>> {
+    async fn spill(&self, prefix: &[u8]) -> Result<Vec<(db::Key, db::Value)>> {
         let (tx, rx) = mpsc::channel(1);
-        let query = Query::ScanKeys(prefix.to_vec(), tx);
+        let query = Query::Spill(prefix.to_vec(), tx);
         self.request(query, rx).await
     }
 

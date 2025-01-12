@@ -53,7 +53,9 @@ pub trait DatabaseClient {
         Ok((batch, total))
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<Key>>;
+    /// Get all documents matching this prefix
+    /// We may refactor this again because it's essentially a buffering scan_prefix
+    async fn spill(&self, prefix: &[u8]) -> Result<Vec<(Key, Value)>>;
 
     async fn get_value(&self, key: &[u8]) -> Result<Value>;
 

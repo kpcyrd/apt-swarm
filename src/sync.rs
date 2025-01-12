@@ -222,10 +222,10 @@ pub async fn index_from_scan(db: &Database, query: &Query) -> Result<(String, us
     let mut counter = 0;
     let mut hasher = Sha256::new();
 
-    let stream = db.scan_prefix(prefix.as_bytes());
+    let stream = db.scan_keys(prefix.as_bytes());
     tokio::pin!(stream);
     while let Some(item) = stream.next().await {
-        let (hash, _data) = item.context("Failed to read from database (index_from_scan)")?;
+        let hash = item.context("Failed to read from database (index_from_scan)")?;
         hasher.update(&hash);
         hasher.update(b"\n");
         counter += 1;
@@ -279,10 +279,8 @@ pub async fn sync_yield<
 
         if total > 0 && total <= SPILL_THRESHOLD {
             let prefix = query.to_string();
-            debug!("Scanning with prefix: {prefix:?}");
-            for hash in db.scan_keys(prefix.as_bytes()).await? {
-                let data = db.get_value(&hash).await?;
-                trace!("Sending data packet to client: {:?}", hash);
+            for (hash, data) in db.spill(prefix.as_bytes()).await? {
+                trace!("Sending data packet to client: {:?}", BStr::new(&hash));
                 tx.write_all(format!(":{:x}\n", data.len()).as_bytes())
                     .await?;
                 tx.write_all(&data).await?;
@@ -502,6 +500,7 @@ pub async fn sync_pull<
 mod tests {
     use super::*;
     use crate::db::AccessMode;
+    use futures::TryStreamExt;
 
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
@@ -693,15 +692,15 @@ R4AjBHbzlyIGpU5BGNn3
             .await?;
         }
 
-        let keys_a = db_a.scan_keys(b"").await?;
-        let keys_b = db_b.scan_keys(b"").await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await?;
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await?;
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 0);
 
         run_sync(&keyring, &mut db_a, &mut db_b).await?;
 
-        let keys_a = db_a.scan_keys(b"").await?;
-        let keys_b = db_b.scan_keys(b"").await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await?;
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await?;
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 3);
 
@@ -913,15 +912,15 @@ RdMJMk9txqB8GM5F2sO3
         )
         .await?;
 
-        let keys_a = db_a.scan_keys(b"").await?;
-        let keys_b = db_b.scan_keys(b"").await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await?;
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await?;
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 1);
 
         run_sync(&keyring, &mut db_a, &mut db_b).await?;
 
-        let keys_a = db_a.scan_keys(b"").await?;
-        let keys_b = db_b.scan_keys(b"").await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await?;
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await?;
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 3);
 

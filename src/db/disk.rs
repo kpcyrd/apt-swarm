@@ -70,14 +70,13 @@ impl DatabaseClient for Database {
         sync::index_from_scan(self, query).await
     }
 
-    // TODO: switch this to stream too
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<db::Key>> {
+    async fn spill(&self, prefix: &[u8]) -> Result<Vec<(db::Key, db::Value)>> {
         let mut out = Vec::new();
         let stream = self.scan_prefix(prefix);
         tokio::pin!(stream);
         while let Some(item) = stream.next().await {
-            let (hash, _data) = item.context("Failed to read from database (scan_keys)")?;
-            out.push(hash);
+            let (hash, data) = item.context("Failed to read from database (spill)")?;
+            out.push((hash, data));
         }
         Ok(out)
     }
@@ -308,6 +307,11 @@ impl Database {
 
         out.sort();
         Ok(out)
+    }
+
+    pub fn scan_keys<'a>(&'a self, prefix: &'a [u8]) -> impl Stream<Item = Result<db::Key>> + 'a {
+        self.scan_prefix(prefix)
+            .map(|item| item.map(|(key, _value)| key))
     }
 
     pub fn scan_prefix<'a>(

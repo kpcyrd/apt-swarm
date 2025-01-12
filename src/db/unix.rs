@@ -123,8 +123,8 @@ impl DatabaseClient for DatabaseUnixClient {
         }
     }
 
-    async fn scan_keys(&self, _prefix: &[u8]) -> Result<Vec<db::Key>> {
-        todo!("DatabaseUnixClient::scan_keys")
+    async fn spill(&self, _prefix: &[u8]) -> Result<Vec<(db::Key, db::Value)>> {
+        todo!("DatabaseUnixClient::spill")
     }
 
     async fn get_value(&self, _key: &[u8]) -> Result<db::Value> {
@@ -170,10 +170,10 @@ impl DatabaseClient for DatabaseHandle {
         }
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<db::Key>> {
+    async fn spill(&self, prefix: &[u8]) -> Result<Vec<(db::Key, db::Value)>> {
         match self {
-            Self::Direct(db) => db.scan_keys(prefix).await,
-            Self::Unix(unix) => unix.scan_keys(prefix).await,
+            Self::Direct(db) => db.spill(prefix).await,
+            Self::Unix(db) => db.spill(prefix).await,
         }
     }
 
