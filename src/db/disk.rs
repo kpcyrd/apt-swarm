@@ -163,7 +163,7 @@ impl Database {
     // TODO: this function should expect some fingerprint and CryptoHash argument (maybe?)
     // TODO: this function is only used in one place and can be easily changed
     pub async fn insert(
-        &self,
+        &mut self,
         fp: &Fingerprint,
         hash: CryptoHash,
         value: &[u8],
@@ -177,7 +177,7 @@ impl Database {
         let hash_str = hash.as_str();
         let key = format!("{fp_str}/{hash_str}");
 
-        if self.get(&key).await?.is_some() {
+        if self.count(key.as_bytes()).await? > 0 {
             info!("Skipping document, already present: {key:?}");
             return Ok((key, false));
         }
