@@ -135,7 +135,7 @@ async fn main() -> Result<()> {
                     count += 1;
                     continue;
                 }
-                let hash = item.context("Failed to read from database")?;
+                let hash = item.context("Failed to read from database (ls)")?;
                 stdout.write_all(&hash).await?;
                 stdout.write_all(b"\n").await?;
             }
@@ -207,7 +207,7 @@ async fn main() -> Result<()> {
 
             p2p::spawn(db, keyring, config, p2p, args.proxy).await?;
         }
-        SubCommand::Plumbing(plumbing) => plumbing::run(config, plumbing).await?,
+        SubCommand::Plumbing(plumbing) => plumbing::run(config, plumbing, args.quiet).await?,
     }
 
     Ok(())

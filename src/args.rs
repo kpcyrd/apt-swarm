@@ -206,6 +206,7 @@ pub enum Plumbing {
     AttachSig(AttachSig),
     DbServer(DbServer),
     Migrate(Migrate),
+    Fsck(Fsck),
     Completions(Completions),
 }
 
@@ -300,6 +301,12 @@ pub struct DbServer {}
 /// Open a fresh database and re-import the old data
 #[derive(Debug, Parser)]
 pub struct Migrate {}
+
+/// Verify stored objects
+#[derive(Debug, Parser)]
+pub struct Fsck {
+    pub prefix: Option<String>,
+}
 
 /// Generate shell completions
 #[derive(Debug, Parser)]
