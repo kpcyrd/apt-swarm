@@ -532,9 +532,10 @@ mod tests {
     async fn test_sync_both_empty() -> Result<()> {
         init();
 
-        let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, mut db_a, mut db_b) = open_temp_dbs().await?;
-        run_sync(&keyring, &mut db_a, &mut db_b).await?;
+        let keyring =
+            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg")).unwrap();
+        let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
+        run_sync(&keyring, &mut db_a, &mut db_b).await.unwrap();
 
         Ok(())
     }
@@ -543,8 +544,9 @@ mod tests {
     async fn test_sync_full() -> Result<()> {
         init();
 
-        let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, mut db_a, mut db_b) = open_temp_dbs().await?;
+        let keyring =
+            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg")).unwrap();
+        let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
 
         let data = [
         b"-----BEGIN PGP SIGNED MESSAGE-----
@@ -684,23 +686,24 @@ R4AjBHbzlyIGpU5BGNn3
 "
 ];
         for data in data {
-            let (signed, _) = Signed::from_bytes(data)?;
+            let (signed, _) = Signed::from_bytes(data).unwrap();
             db_a.add_release(
                 &"DBA36B5181D0C816F630E889D980A17457F6FB06".parse()?,
                 &signed,
             )
-            .await?;
+            .await
+            .unwrap();
         }
 
-        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await?;
-        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 0);
 
-        run_sync(&keyring, &mut db_a, &mut db_b).await?;
+        run_sync(&keyring, &mut db_a, &mut db_b).await.unwrap();
 
-        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await?;
-        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 3);
 
@@ -711,8 +714,9 @@ R4AjBHbzlyIGpU5BGNn3
     async fn test_sync_from_partial() -> Result<()> {
         init();
 
-        let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, mut db_a, mut db_b) = open_temp_dbs().await?;
+        let keyring =
+            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg")).unwrap();
+        let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
 
         let data = [
         b"-----BEGIN PGP SIGNED MESSAGE-----
@@ -852,12 +856,13 @@ R4AjBHbzlyIGpU5BGNn3
 "
 ];
         for data in data {
-            let (signed, _) = Signed::from_bytes(data)?;
+            let (signed, _) = Signed::from_bytes(data).unwrap();
             db_a.add_release(
                 &"DBA36B5181D0C816F630E889D980A17457F6FB06".parse()?,
                 &signed,
             )
-            .await?;
+            .await
+            .unwrap();
         }
 
         let (signed, _) = Signed::from_bytes(b"-----BEGIN PGP SIGNED MESSAGE-----
@@ -904,23 +909,24 @@ Q/m8Ja8hBw6lmyM5uCduF61BhnQDfuDQetLgGzrvOp3m2qfTag3QGtEijwhH8L2O
 RdMJMk9txqB8GM5F2sO3
 =gtrA
 -----END PGP SIGNATURE-----
-")?;
+").unwrap();
 
         db_b.add_release(
             &"DBA36B5181D0C816F630E889D980A17457F6FB06".parse()?,
             &signed,
         )
-        .await?;
+        .await
+        .unwrap();
 
-        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await?;
-        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 1);
 
-        run_sync(&keyring, &mut db_a, &mut db_b).await?;
+        run_sync(&keyring, &mut db_a, &mut db_b).await.unwrap();
 
-        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await?;
-        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 3);
 

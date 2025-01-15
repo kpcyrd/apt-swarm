@@ -1,7 +1,7 @@
 use super::{
     compression, consume,
     consume::Consume as _,
-    exclusive,
+    exclusive::Exclusive,
     header::{BlockHeader, CryptoHash},
     DatabaseClient, DatabaseHandle, DatabaseUnixClient,
 };
@@ -17,7 +17,7 @@ use sequoia_openpgp::Fingerprint;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use tokio::fs;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, SeekFrom};
 
 pub const SHARD_ID_SIZE: usize = 2;
 
@@ -55,7 +55,7 @@ fn file_matches_prefix(file: &str, prefix: &[u8]) -> bool {
 #[derive(Debug)]
 pub struct Database {
     path: PathBuf,
-    lock: Option<exclusive::Lock>,
+    exclusive: Option<Exclusive>,
 }
 
 #[async_trait]
@@ -108,11 +108,6 @@ impl DatabaseClient for Database {
 }
 
 impl Database {
-    #[inline]
-    fn is_exclusive(&self) -> bool {
-        self.lock.is_some()
-    }
-
     pub async fn open(config: &Config, mode: AccessMode) -> Result<DatabaseHandle> {
         let sock_path = config.db_socket_path()?;
 
@@ -140,14 +135,14 @@ impl Database {
             .await
             .with_context(|| anyhow!("Failed to create directory: {path:?}"))?;
 
-        let lock = if mode == AccessMode::Exclusive {
-            let lock = exclusive::Lock::acquire(&path).await?;
-            Some(lock)
+        let exclusive = if mode == AccessMode::Exclusive {
+            let exclusive = Exclusive::acquire(&path).await?;
+            Some(exclusive)
         } else {
             None
         };
 
-        Ok(Database { path, lock })
+        Ok(Database { path, exclusive })
     }
 
     pub async fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<db::Value>> {
@@ -168,11 +163,7 @@ impl Database {
         hash: CryptoHash,
         value: &[u8],
     ) -> Result<(String, bool)> {
-        if !self.is_exclusive() {
-            bail!("Tried to perform insert on readonly database");
-        }
-
-        // TODO: check if we can clean this up further
+        // check if write is necessary
         let fp_str = format!("{fp:X}");
         let hash_str = hash.as_str();
         let key = format!("{fp_str}/{hash_str}");
@@ -183,6 +174,7 @@ impl Database {
         }
         info!("Adding document to database: {key:?}");
 
+        // determine file to write to
         let idx = hash_str
             .find(':')
             .with_context(|| anyhow!("Missing hash id in key: {key:?}"))?;
@@ -197,14 +189,9 @@ impl Database {
             .with_context(|| anyhow!("Failed to create folder: {folder:?}"))?;
         let path = folder.join(shard);
 
-        let compressed = compression::compress(value)
-            .await
-            .with_context(|| anyhow!("Failed to compress block data: {path:?}"))?;
-        let header = BlockHeader::new(hash, compressed.len());
-
-        // TODO: check the file is in a clean state
-
+        // open file
         let mut file = fs::OpenOptions::new()
+            .read(true)
             .write(true)
             .append(true)
             .create(true)
@@ -212,6 +199,27 @@ impl Database {
             .await
             .with_context(|| anyhow!("Failed to open file: {path:?}"))?;
 
+        // ensure file is in clean state
+        let Some(exclusive) = &mut self.exclusive else {
+            bail!("Tried to perform insert on readonly database");
+        };
+        exclusive
+            .ensure_tail_integrity(&path, &mut file)
+            .await
+            .context("Failed to verify tail integrity")?;
+
+        // seek to end of file for appending data
+        file.seek(SeekFrom::End(0))
+            .await
+            .with_context(|| anyhow!("Failed to seek to end of file: {path:?}"))?;
+
+        // prepare header and data
+        let compressed = compression::compress(value)
+            .await
+            .with_context(|| anyhow!("Failed to compress block data: {path:?}"))?;
+        let header = BlockHeader::new(hash, compressed.len());
+
+        // write to file
         header
             .write(&mut file)
             .await
@@ -291,7 +299,7 @@ impl Database {
                 out.push((key.into_bytes(), data));
             } else {
                 // does not match prefix, skip over it
-                consume::SkipValue::consume(&mut reader, &header)
+                consume::FastSkipValue::consume(&mut reader, &header)
                     .await
                     .with_context(|| anyhow!("Failed to process block: {path:?}"))?;
             }
@@ -302,7 +310,7 @@ impl Database {
     }
 
     pub fn scan_keys<'a>(&'a self, prefix: &'a [u8]) -> impl Stream<Item = Result<db::Key>> + 'a {
-        self.scan_prefix::<consume::SkipValue>(prefix)
+        self.scan_prefix::<consume::FastSkipValue>(prefix)
             .map(|item| item.map(|(key, _value)| key))
     }
 

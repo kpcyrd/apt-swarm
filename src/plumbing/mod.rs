@@ -21,8 +21,8 @@ use std::sync::LazyLock;
 use tokio::fs;
 use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 
-const FSCK_OK: LazyLock<String> = LazyLock::new(|| " OK\n".bold().green().to_string());
-const FSCK_ERR: LazyLock<String> = LazyLock::new(|| " ERR\n".bold().red().to_string());
+static FSCK_OK: LazyLock<String> = LazyLock::new(|| " OK\n".bold().green().to_string());
+static FSCK_ERR: LazyLock<String> = LazyLock::new(|| " ERR\n".bold().red().to_string());
 
 async fn fsck_doc(hash: &[u8], data: &[u8], keyring: Option<&Keyring>) -> Result<()> {
     let signed = Signed::from_reader(&mut &data[..])
