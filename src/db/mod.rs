@@ -1,9 +1,13 @@
 pub mod channel;
+pub mod compression;
+pub mod consume;
 pub mod disk;
+pub mod exclusive;
+pub mod header;
 pub mod unix;
 
 pub use self::channel::{DatabaseServer, DatabaseServerClient};
-pub use self::disk::Database;
+pub use self::disk::{AccessMode, Database};
 pub use self::unix::{DatabaseHandle, DatabaseUnixClient};
 
 use crate::errors::*;
@@ -11,6 +15,9 @@ use crate::signed::Signed;
 use crate::sync;
 use async_trait::async_trait;
 use sequoia_openpgp::Fingerprint;
+
+pub type Key = Vec<u8>;
+pub type Value = Vec<u8>;
 
 #[async_trait]
 pub trait DatabaseClient {
@@ -47,11 +54,11 @@ pub trait DatabaseClient {
         Ok((batch, total))
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>>;
+    /// Get all documents matching this prefix
+    /// We may refactor this again because it's essentially a buffering scan_prefix
+    async fn spill(&self, prefix: &[u8]) -> Result<Vec<(Key, Value)>>;
 
-    async fn get_value(&self, key: &[u8]) -> Result<sled::IVec>;
-
-    async fn delete(&mut self, key: &[u8]) -> Result<()>;
+    async fn get_value(&self, key: &[u8]) -> Result<Value>;
 
     async fn count(&mut self, prefix: &[u8]) -> Result<u64>;
 

@@ -3,6 +3,7 @@ use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::signed::Signed;
 use bstr::BStr;
+use futures::StreamExt;
 use indexmap::{IndexMap, IndexSet};
 use sequoia_openpgp::Fingerprint;
 use sha2::{Digest, Sha256};
@@ -192,7 +193,7 @@ impl BatchIndex {
 pub async fn connect(addr: SocketAddr, proxy: Option<SocketAddr>) -> Result<TcpStream> {
     let target = proxy.unwrap_or(addr);
 
-    debug!("Creating tcp connection to {target:?}");
+    info!("Creating tcp connection to {target:?}");
     let sock = TcpStream::connect(target);
     let mut sock = time::timeout(CONNECT_TIMEOUT, sock)
         .await
@@ -215,13 +216,16 @@ pub async fn connect(addr: SocketAddr, proxy: Option<SocketAddr>) -> Result<TcpS
     Ok(sock)
 }
 
-pub fn index_from_scan(db: &Database, query: &Query) -> Result<(String, usize)> {
+pub async fn index_from_scan(db: &Database, query: &Query) -> Result<(String, usize)> {
     let prefix = query.to_string();
 
     let mut counter = 0;
     let mut hasher = Sha256::new();
-    for item in db.scan_prefix(prefix.as_bytes()) {
-        let (hash, _data) = item.context("Failed to read from database")?;
+
+    let stream = db.scan_keys(prefix.as_bytes());
+    tokio::pin!(stream);
+    while let Some(item) = stream.next().await {
+        let hash = item.context("Failed to read from database (index_from_scan)")?;
         hasher.update(&hash);
         hasher.update(b"\n");
         counter += 1;
@@ -275,10 +279,8 @@ pub async fn sync_yield<
 
         if total > 0 && total <= SPILL_THRESHOLD {
             let prefix = query.to_string();
-            debug!("Scanning with prefix: {prefix:?}");
-            for hash in db.scan_keys(prefix.as_bytes()).await? {
-                let data = db.get_value(&hash).await?;
-                trace!("Sending data packet to client: {:?}", hash);
+            for (hash, data) in db.spill(prefix.as_bytes()).await? {
+                trace!("Sending data packet to client: {:?}", BStr::new(&hash));
                 tx.write_all(format!(":{:x}\n", data.len()).as_bytes())
                     .await?;
                 tx.write_all(&data).await?;
@@ -497,15 +499,17 @@ pub async fn sync_pull<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::AccessMode;
+    use futures::TryStreamExt;
 
     fn init() {
         let _ = env_logger::builder().is_test(true).try_init();
     }
 
-    fn open_temp_dbs() -> Result<(tempfile::TempDir, Database, Database)> {
+    async fn open_temp_dbs() -> Result<(tempfile::TempDir, Database, Database)> {
         let dir = tempfile::tempdir()?;
-        let db_a = Database::open_at(&dir.path().join("a"), None)?;
-        let db_b = Database::open_at(&dir.path().join("b"), None)?;
+        let db_a = Database::open_at(dir.path().join("a"), AccessMode::Exclusive).await?;
+        let db_b = Database::open_at(dir.path().join("b"), AccessMode::Exclusive).await?;
         Ok((dir, db_a, db_b))
     }
 
@@ -528,9 +532,10 @@ mod tests {
     async fn test_sync_both_empty() -> Result<()> {
         init();
 
-        let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, mut db_a, mut db_b) = open_temp_dbs()?;
-        run_sync(&keyring, &mut db_a, &mut db_b).await?;
+        let keyring =
+            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg")).unwrap();
+        let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
+        run_sync(&keyring, &mut db_a, &mut db_b).await.unwrap();
 
         Ok(())
     }
@@ -539,8 +544,9 @@ mod tests {
     async fn test_sync_full() -> Result<()> {
         init();
 
-        let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, mut db_a, mut db_b) = open_temp_dbs()?;
+        let keyring =
+            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg")).unwrap();
+        let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
 
         let data = [
         b"-----BEGIN PGP SIGNED MESSAGE-----
@@ -680,23 +686,24 @@ R4AjBHbzlyIGpU5BGNn3
 "
 ];
         for data in data {
-            let (signed, _) = Signed::from_bytes(data)?;
+            let (signed, _) = Signed::from_bytes(data).unwrap();
             db_a.add_release(
                 &"DBA36B5181D0C816F630E889D980A17457F6FB06".parse()?,
                 &signed,
             )
-            .await?;
+            .await
+            .unwrap();
         }
 
-        let keys_a = db_a.scan_keys(b"").await?;
-        let keys_b = db_b.scan_keys(b"").await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 0);
 
-        run_sync(&keyring, &mut db_a, &mut db_b).await?;
+        run_sync(&keyring, &mut db_a, &mut db_b).await.unwrap();
 
-        let keys_a = db_a.scan_keys(b"").await?;
-        let keys_b = db_b.scan_keys(b"").await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 3);
 
@@ -707,8 +714,9 @@ R4AjBHbzlyIGpU5BGNn3
     async fn test_sync_from_partial() -> Result<()> {
         init();
 
-        let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
-        let (_, mut db_a, mut db_b) = open_temp_dbs()?;
+        let keyring =
+            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg")).unwrap();
+        let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
 
         let data = [
         b"-----BEGIN PGP SIGNED MESSAGE-----
@@ -848,12 +856,13 @@ R4AjBHbzlyIGpU5BGNn3
 "
 ];
         for data in data {
-            let (signed, _) = Signed::from_bytes(data)?;
+            let (signed, _) = Signed::from_bytes(data).unwrap();
             db_a.add_release(
                 &"DBA36B5181D0C816F630E889D980A17457F6FB06".parse()?,
                 &signed,
             )
-            .await?;
+            .await
+            .unwrap();
         }
 
         let (signed, _) = Signed::from_bytes(b"-----BEGIN PGP SIGNED MESSAGE-----
@@ -900,23 +909,24 @@ Q/m8Ja8hBw6lmyM5uCduF61BhnQDfuDQetLgGzrvOp3m2qfTag3QGtEijwhH8L2O
 RdMJMk9txqB8GM5F2sO3
 =gtrA
 -----END PGP SIGNATURE-----
-")?;
+").unwrap();
 
         db_b.add_release(
             &"DBA36B5181D0C816F630E889D980A17457F6FB06".parse()?,
             &signed,
         )
-        .await?;
+        .await
+        .unwrap();
 
-        let keys_a = db_a.scan_keys(b"").await?;
-        let keys_b = db_b.scan_keys(b"").await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 1);
 
-        run_sync(&keyring, &mut db_a, &mut db_b).await?;
+        run_sync(&keyring, &mut db_a, &mut db_b).await.unwrap();
 
-        let keys_a = db_a.scan_keys(b"").await?;
-        let keys_b = db_b.scan_keys(b"").await?;
+        let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
+        let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 3);
 

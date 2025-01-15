@@ -86,9 +86,6 @@ pub struct Args {
     /// Configure the path where persistent data should be stored
     #[arg(long, global = true, env = "APT_SWARM_DATA_PATH")]
     pub data_path: Option<PathBuf>,
-    /// The maximum cache size in MiB for the database system page cache
-    #[arg(long, env = "APT_SWARM_DB_CACHE_MB")]
-    pub db_cache_mb: Option<u64>,
     /// Always enable colored output
     #[arg(short = 'C', long, global = true)]
     pub colors: bool,
@@ -200,7 +197,6 @@ pub enum Plumbing {
     Fingerprint(Fingerprint),
     Paths(Paths),
     Config(Config),
-    Delete(Delete),
     Index(Index),
     SyncYield(SyncYield),
     SyncPull(SyncPull),
@@ -210,6 +206,7 @@ pub enum Plumbing {
     AttachSig(AttachSig),
     DbServer(DbServer),
     Migrate(Migrate),
+    Fsck(Fsck),
     Completions(Completions),
 }
 
@@ -237,12 +234,6 @@ pub struct Paths {}
 /// Print applied configuration
 #[derive(Debug, Parser)]
 pub struct Config {}
-
-/// Delete keys from the database
-#[derive(Debug, Parser)]
-pub struct Delete {
-    pub keys: Vec<OsString>,
-}
 
 /// Scan the database and calculate the requested index
 #[derive(Debug, Parser)]
@@ -310,6 +301,12 @@ pub struct DbServer {}
 /// Open a fresh database and re-import the old data
 #[derive(Debug, Parser)]
 pub struct Migrate {}
+
+/// Verify stored objects
+#[derive(Debug, Parser)]
+pub struct Fsck {
+    pub prefix: Option<String>,
+}
 
 /// Generate shell completions
 #[derive(Debug, Parser)]

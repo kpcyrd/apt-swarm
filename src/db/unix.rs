@@ -1,4 +1,5 @@
 use super::{Database, DatabaseClient};
+use crate::db;
 use crate::errors::*;
 use crate::signed::Signed;
 use crate::sync;
@@ -14,7 +15,7 @@ use tokio::net::UnixStream;
 pub enum Query {
     AddRelease(String, Signed),
     IndexFromScan(SyncQuery),
-    Delete(BString),
+    // Delete(BString),
     Count(BString),
     Flush,
 }
@@ -122,19 +123,12 @@ impl DatabaseClient for DatabaseUnixClient {
         }
     }
 
-    async fn scan_keys(&self, _prefix: &[u8]) -> Result<Vec<sled::IVec>> {
-        todo!("DatabaseUnixClient::scan_keys")
+    async fn spill(&self, _prefix: &[u8]) -> Result<Vec<(db::Key, db::Value)>> {
+        todo!("DatabaseUnixClient::spill")
     }
 
-    async fn get_value(&self, _key: &[u8]) -> Result<sled::IVec> {
+    async fn get_value(&self, _key: &[u8]) -> Result<db::Value> {
         todo!("DatabaseUnixClient::get_value")
-    }
-
-    async fn delete(&mut self, key: &[u8]) -> Result<()> {
-        self.send_query(&Query::Delete(BString::new(key.to_vec())))
-            .await?;
-        self.recv_response().await?;
-        Ok(())
     }
 
     async fn count(&mut self, prefix: &[u8]) -> Result<u64> {
@@ -176,24 +170,17 @@ impl DatabaseClient for DatabaseHandle {
         }
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>> {
+    async fn spill(&self, prefix: &[u8]) -> Result<Vec<(db::Key, db::Value)>> {
         match self {
-            Self::Direct(db) => db.scan_keys(prefix).await,
-            Self::Unix(unix) => unix.scan_keys(prefix).await,
+            Self::Direct(db) => db.spill(prefix).await,
+            Self::Unix(db) => db.spill(prefix).await,
         }
     }
 
-    async fn get_value(&self, key: &[u8]) -> Result<sled::IVec> {
+    async fn get_value(&self, key: &[u8]) -> Result<db::Value> {
         match self {
             Self::Direct(db) => db.get_value(key).await,
             Self::Unix(unix) => unix.get_value(key).await,
-        }
-    }
-
-    async fn delete(&mut self, key: &[u8]) -> Result<()> {
-        match self {
-            Self::Direct(db) => db.delete(key).await,
-            Self::Unix(unix) => unix.delete(key).await,
         }
     }
 

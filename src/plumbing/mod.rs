@@ -4,22 +4,67 @@ pub mod update;
 use crate::args::{self, FileOrStdin, Plumbing};
 use crate::config::Config;
 use crate::db::channel::DatabaseServer;
-use crate::db::{Database, DatabaseClient};
+use crate::db::header::CryptoHash;
+use crate::db::{AccessMode, Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::p2p;
 use crate::pgp;
 use crate::signed::Signed;
 use crate::sync;
-use bstr::BString;
+use bstr::{BStr, BString};
+use colored::Colorize;
+use futures::StreamExt;
 use gix::object::Kind;
 use std::borrow::Cow;
-use std::os::unix::ffi::OsStrExt;
+use std::sync::LazyLock;
 use tokio::fs;
-use tokio::io;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 
-pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
+static FSCK_OK: LazyLock<String> = LazyLock::new(|| " OK\n".bold().green().to_string());
+static FSCK_ERR: LazyLock<String> = LazyLock::new(|| " ERR\n".bold().red().to_string());
+
+async fn fsck_doc(hash: &[u8], data: &[u8], keyring: Option<&Keyring>) -> Result<()> {
+    let signed = Signed::from_reader(&mut &data[..])
+        .await
+        .context("Failed to parse release file")?;
+
+    let canonicalized = signed.canonicalize(keyring)?;
+    let mut canonicalized = canonicalized.into_iter();
+    match canonicalized.next() {
+        Some((Some(fp), variant)) => {
+            let keyspace = format!("{fp:X}/");
+            let Some(hash) = hash.strip_prefix(keyspace.as_bytes()) else {
+                bail!(
+                    "Signature is stored in incorrect fingerprint keyspace, expected: {keyspace}"
+                );
+            };
+            let normalized = variant.to_clear_signed()?;
+            if normalized != data {
+                bail!("Data is not correctly canonicalized, byte mismatch");
+            }
+
+            let verified = CryptoHash::calculate(&normalized);
+            if verified.as_str().as_bytes() != hash {
+                bail!("Incorrect sha256, calculated: {:?}", verified.as_str());
+            }
+        }
+        Some((None, _variant)) => {
+            bail!("Signature can't be validated because the key is not in keyring");
+        }
+        None => {
+            bail!("Could not find any signature packet");
+        }
+    }
+
+    if let Some(_trailing) = canonicalized.next() {
+        bail!("Document is not fully canonicalized, has multiple signatures");
+    }
+
+    Ok(())
+}
+
+pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()> {
     match args {
         Plumbing::Canonicalize(mut canonicalize) => {
             FileOrStdin::default_stdin(&mut canonicalize.paths);
@@ -71,18 +116,9 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
             let config = serde_json::to_string_pretty(&config.data)?;
             println!("{config}");
         }
-        Plumbing::Delete(remove) => {
-            let config = config?;
-            let mut db = Database::open(&config).await?;
-
-            for key in remove.keys {
-                debug!("Deleting key {:?}", key);
-                db.delete(key.as_bytes()).await?;
-            }
-        }
         Plumbing::Index(query) => {
             let config = config?;
-            let mut db = Database::open(&config).await?;
+            let mut db = Database::open(&config, AccessMode::Relaxed).await?;
 
             let mut q = sync::Query {
                 fp: query.fingerprint,
@@ -101,13 +137,13 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::SyncYield(_sync_yield) => {
             let config = config?;
-            let mut db = Database::open(&config).await?;
+            let mut db = Database::open(&config, AccessMode::Relaxed).await?;
             sync::sync_yield(&mut db, io::stdin(), &mut io::stdout(), None).await?;
         }
         Plumbing::SyncPull(sync_pull) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
-            let mut db = Database::open(&config).await?;
+            let mut db = Database::open(&config, AccessMode::Exclusive).await?;
             sync::sync_pull(
                 &mut db,
                 &keyring,
@@ -204,7 +240,7 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
         }
         Plumbing::DbServer(_server) => {
             let config = config?;
-            let db = Database::open_directly(&config).await?;
+            let db = Database::open_directly(&config, AccessMode::Exclusive).await?;
 
             let (mut db_server, db_client) = DatabaseServer::new(db);
             let db_socket_path = config.db_socket_path()?;
@@ -239,10 +275,13 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
                 })?;
 
             {
-                let mut new_db = Database::open_at(&new_path, config.db_cache_limit)?;
-                let migrate_db = Database::open_at(&migrate_path, config.db_cache_limit)?;
+                let mut new_db = Database::open_at(new_path, AccessMode::Exclusive).await?;
+                let migrate_db =
+                    Database::open_at(migrate_path.clone(), AccessMode::Exclusive).await?;
 
-                for item in migrate_db.scan_prefix(&[]) {
+                let stream = migrate_db.scan_values(&[]);
+                tokio::pin!(stream);
+                while let Some(item) = stream.next().await {
                     let (_key, value) = item?;
 
                     let (signed, _remaining) =
@@ -268,6 +307,55 @@ pub async fn run(config: Result<Config>, args: Plumbing) -> Result<()> {
 
             info!("Migration completed, removing migration folder...");
             fs::remove_dir_all(&delete_path).await?;
+        }
+        Plumbing::Fsck(fsck) => {
+            let config = config?;
+            let keyring = Some(Keyring::load(&config)?);
+            let db = Database::open_directly(&config, AccessMode::Relaxed).await?;
+
+            let prefix = if let Some(prefix) = &fsck.prefix {
+                prefix.as_bytes()
+            } else {
+                &[]
+            };
+
+            let mut errors = vec![];
+
+            let mut stdout = io::stdout();
+            let stream = db.scan_values(prefix);
+            tokio::pin!(stream);
+            while let Some(item) = stream.next().await {
+                let (hash, data) = item.context("Failed to read from database (fsck)")?;
+                if quiet == 0 {
+                    stdout.write_all(&hash).await?;
+                    stdout.write_all(b"... ").await?;
+                    stdout.flush().await?;
+                }
+
+                match fsck_doc(&hash, &data, keyring.as_ref()).await {
+                    Ok(_) => {
+                        if quiet == 0 {
+                            stdout.write_all(FSCK_OK.as_bytes()).await?;
+                            stdout.flush().await?;
+                        }
+                    }
+                    Err(err) => {
+                        if quiet == 0 {
+                            stdout.write_all(FSCK_ERR.as_bytes()).await?;
+                            stdout.flush().await?;
+                        }
+                        error!("{}: {:#}", BStr::new(&hash), err);
+                        errors.push((hash, err));
+                    }
+                }
+            }
+
+            if !errors.is_empty() {
+                for (hash, err) in &errors {
+                    println!("{}: {:#}", BStr::new(&hash), err);
+                }
+                bail!("Fsck failed ({} errors occured)", errors.len());
+            }
         }
         Plumbing::Completions(completions) => {
             args::gen_completions(&completions)?;

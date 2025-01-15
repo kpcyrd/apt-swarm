@@ -16,7 +16,9 @@ members = ["fuzz"]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 
 [dependencies]
+advisory-lock = "0.3.0"
 anyhow = "1.0.68"
+async-stream = "0.3.6"
 async-trait = "0.1.64"
 bstr = { version = "1.2.0", features = ["serde"] }
 bytes = "1.4.0"
@@ -36,6 +38,7 @@ ipnetwork = "0.21"
 irc = { version = "1", default-features = false, features = ["tls-rust"] }
 log = "0.4.17"
 lru = "0.12"
+lz4_flex = "0.11.3"
 memchr = "2.5.0"
 num-format = "0.4.4"
 reqwest = { version = "0.12", features = ["rustls-tls", "socks"], default-features = false }
@@ -43,7 +46,7 @@ sequoia-openpgp = { version = "1.21", default-features = false, features = ["com
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.92"
 sha2 = "0.10.6"
-sled = { version = "0.34.7", features = ["compression"] }
+#sled = { version = "0.34.7", features = ["compression"] }
 socket2 = "0.5"
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "io-util", "io-std", "fs", "process", "net"] }
 tokio-socks = "0.5.1"

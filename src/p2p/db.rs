@@ -27,10 +27,6 @@ pub async fn serve_request(db: &mut DatabaseServerClient, buf: &[u8]) -> Result<
                 .await?;
             Ok(Response::Index(index))
         }
-        Query::Delete(key) => {
-            db.delete(&key).await?;
-            Ok(Response::Ok)
-        }
         Query::Count(key) => {
             let count = db.count(&key).await?;
             Ok(Response::Num(count))

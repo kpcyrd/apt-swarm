@@ -1,4 +1,5 @@
 use super::{Database, DatabaseClient};
+use crate::db;
 use crate::errors::*;
 use crate::signed::Signed;
 use crate::sync;
@@ -9,9 +10,9 @@ use tokio::sync::mpsc;
 pub enum Query {
     AddRelease(Fingerprint, Signed, mpsc::Sender<String>),
     IndexFromScan(sync::Query, mpsc::Sender<(String, usize)>),
-    ScanKeys(Vec<u8>, mpsc::Sender<Vec<sled::IVec>>),
-    GetValue(Vec<u8>, mpsc::Sender<sled::IVec>),
-    Delete(Vec<u8>, mpsc::Sender<()>),
+    Spill(Vec<u8>, mpsc::Sender<Vec<(db::Key, db::Value)>>),
+    GetValue(Vec<u8>, mpsc::Sender<db::Value>),
+    // Delete(Vec<u8>, mpsc::Sender<()>),
     Count(Vec<u8>, mpsc::Sender<u64>),
     Flush(mpsc::Sender<()>),
 }
@@ -43,17 +44,13 @@ impl DatabaseServer {
                     let ret = self.db.index_from_scan(&query).await?;
                     tx.send(ret).await.ok();
                 }
-                Query::ScanKeys(prefix, tx) => {
-                    let ret = self.db.scan_keys(&prefix).await?;
+                Query::Spill(prefix, tx) => {
+                    let ret = self.db.spill(&prefix).await?;
                     tx.send(ret).await.ok();
                 }
                 Query::GetValue(key, tx) => {
                     let ret = self.db.get_value(&key).await?;
                     tx.send(ret).await.ok();
-                }
-                Query::Delete(key, tx) => {
-                    self.db.delete(&key).await?;
-                    tx.send(()).await.ok();
                 }
                 Query::Count(key, tx) => {
                     let ret = self.db.count(&key).await?;
@@ -98,21 +95,15 @@ impl DatabaseClient for DatabaseServerClient {
         self.request(query, rx).await
     }
 
-    async fn scan_keys(&self, prefix: &[u8]) -> Result<Vec<sled::IVec>> {
+    async fn spill(&self, prefix: &[u8]) -> Result<Vec<(db::Key, db::Value)>> {
         let (tx, rx) = mpsc::channel(1);
-        let query = Query::ScanKeys(prefix.to_vec(), tx);
+        let query = Query::Spill(prefix.to_vec(), tx);
         self.request(query, rx).await
     }
 
-    async fn get_value(&self, key: &[u8]) -> Result<sled::IVec> {
+    async fn get_value(&self, key: &[u8]) -> Result<db::Value> {
         let (tx, rx) = mpsc::channel(1);
         let query = Query::GetValue(key.to_vec(), tx);
-        self.request(query, rx).await
-    }
-
-    async fn delete(&mut self, key: &[u8]) -> Result<()> {
-        let (tx, rx) = mpsc::channel(1);
-        let query = Query::Delete(key.to_vec(), tx);
         self.request(query, rx).await
     }
 

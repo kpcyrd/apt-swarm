@@ -25,11 +25,13 @@ pub static P2P_BLOCK_LIST: LazyLock<Vec<IpNetwork>> = LazyLock::new(|| {
         "224.0.0.0/4".parse().unwrap(),
     ]
 });
+pub static P2P_ILLEGAL_PORTS: &[u16] = &[
+    21, 22, 23, 53, 80, 110, 143, 389, 443, 587, 993, 995, 1194, 3128, 3389, 5900, 6667, 6669,
+    6697, 8080,
+];
 
 // When an ip is in cooldown, this port is still allowed, until the specific port goes into cooldown too
 pub const STANDARD_P2P_PORT: u16 = 16169;
-
-pub const P2P_SYNC_CONNECT_JITTER: Duration = Duration::from_secs(3);
 
 pub const COOLDOWN_LRU_SIZE: usize = 16_384;
 pub const COOLDOWN_PORT_AFTER_SUCCESS: Duration = Duration::from_secs(60 * 5); // 5min
@@ -150,13 +152,17 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
                     continue;
                 }
             }
+            if P2P_ILLEGAL_PORTS.contains(&addr.port()) {
+                debug!("Port is on blocklist, skipping: addr={addr:?}");
+                continue;
+            }
 
             if !cooldown.can_approach(addr) {
                 debug!("Address is still in cooldown, skipping for now: {addr:?}");
                 continue;
             }
 
-            p2p::random_jitter(P2P_SYNC_CONNECT_JITTER).await;
+            p2p::random_jitter(p2p::P2P_SYNC_CONNECT_JITTER).await;
 
             info!("Syncing from remote peer: {addr:?}");
             let ret = pull_from_peer(db, &keyring, &[], addr, proxy).await;
