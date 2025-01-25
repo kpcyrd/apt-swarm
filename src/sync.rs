@@ -465,7 +465,6 @@ pub async fn sync_pull_key<
             }
         }
     }
-    db.flush().await.context("Failed to flush database")?;
 
     Ok(())
 }

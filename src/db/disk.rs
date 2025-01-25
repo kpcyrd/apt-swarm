@@ -93,18 +93,6 @@ impl DatabaseClient for Database {
         let count = self.scan_keys(prefix).count().await;
         Ok(count as u64)
     }
-
-    async fn flush(&mut self) -> Result<()> {
-        /*
-        self.sled
-            .flush_async()
-            .await
-            .context("Failed to flush database to disk")?;
-        Ok(())
-        */
-        warn!("TODO: flush is not actually implemented");
-        Ok(())
-    }
 }
 
 impl Database {
@@ -155,8 +143,6 @@ impl Database {
         Ok(Some(entry.1))
     }
 
-    // TODO: this function should expect some fingerprint and CryptoHash argument (maybe?)
-    // TODO: this function is only used in one place and can be easily changed
     pub async fn insert(
         &mut self,
         fp: &Fingerprint,

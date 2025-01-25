@@ -26,8 +26,8 @@ pub static P2P_BLOCK_LIST: LazyLock<Vec<IpNetwork>> = LazyLock::new(|| {
     ]
 });
 pub static P2P_ILLEGAL_PORTS: &[u16] = &[
-    21, 22, 23, 53, 80, 110, 143, 389, 443, 587, 993, 995, 1194, 3128, 3389, 5900, 6667, 6669,
-    6697, 8080,
+    21, 22, 23, 25, 53, 80, 110, 143, 389, 443, 587, 993, 995, 1194, 3128,
+    3389, 5900, 6667, 6669, 6697, 8080,
 ];
 
 // When an ip is in cooldown, this port is still allowed, until the specific port goes into cooldown too

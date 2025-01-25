@@ -63,8 +63,6 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-
-            db.flush().await?;
         }
         SubCommand::Export(export) => {
             let config = config?;

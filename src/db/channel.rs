@@ -14,7 +14,6 @@ pub enum Query {
     GetValue(Vec<u8>, mpsc::Sender<db::Value>),
     // Delete(Vec<u8>, mpsc::Sender<()>),
     Count(Vec<u8>, mpsc::Sender<u64>),
-    Flush(mpsc::Sender<()>),
 }
 
 #[derive(Debug)]
@@ -55,9 +54,6 @@ impl DatabaseServer {
                 Query::Count(key, tx) => {
                     let ret = self.db.count(&key).await?;
                     tx.send(ret).await.ok();
-                }
-                Query::Flush(tx) => {
-                    tx.send(()).await.ok();
                 }
             }
         }
@@ -110,12 +106,6 @@ impl DatabaseClient for DatabaseServerClient {
     async fn count(&mut self, key: &[u8]) -> Result<u64> {
         let (tx, rx) = mpsc::channel(1);
         let query = Query::Count(key.to_vec(), tx);
-        self.request(query, rx).await
-    }
-
-    async fn flush(&mut self) -> Result<()> {
-        let (tx, rx) = mpsc::channel(1);
-        let query = Query::Flush(tx);
         self.request(query, rx).await
     }
 }
