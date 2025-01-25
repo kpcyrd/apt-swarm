@@ -438,6 +438,10 @@ pub async fn run(
             info!("Migration completed, removing migration folder...");
             fs::remove_dir_all(&delete_path).await?;
         }
+        #[cfg(feature = "onions")]
+        Plumbing::OnionService(_onion) => {
+            p2p::onions::spawn().await?;
+        }
         Plumbing::Fsck(fsck) => {
             let config = config?;
             let keyring = Some(Keyring::load(&config)?);

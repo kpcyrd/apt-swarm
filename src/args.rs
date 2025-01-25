@@ -207,6 +207,10 @@ pub struct P2p {
     /// Do not actively fetch updates from the configured repositories
     #[arg(long)]
     pub no_fetch: bool,
+    #[cfg(feature = "onions")]
+    /// Setup a hidden service and support outbound onion connections
+    #[arg(long)]
+    pub onions: bool,
     /// Do not bind a sync port for p2p traffic
     #[arg(long)]
     pub no_bind: bool,
@@ -265,6 +269,8 @@ pub enum Plumbing {
     GitScrape(GitScrape),
     Index(Index),
     Migrate(Migrate),
+    #[cfg(feature = "onions")]
+    OnionService(OnionService),
     Paths(Paths),
     PeerdbAdd(PeerdbAdd),
     PeerdbList(PeerdbList),
@@ -389,6 +395,10 @@ pub struct Index {
 /// Open a fresh database and re-import the old data
 #[derive(Debug, Parser)]
 pub struct Migrate {}
+
+/// Bind and run hidden service
+#[derive(Debug, Parser)]
+pub struct OnionService {}
 
 /// Print configured paths
 #[derive(Debug, Parser)]
