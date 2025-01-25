@@ -274,7 +274,6 @@ impl Database {
                 .await
                 .with_context(|| anyhow!("Failed to read block header: {path:?}"))?;
 
-            debug!("Parsed block header: {header:?}");
             if header.hash.0.as_bytes().starts_with(partitioned_prefix) {
                 // header is eligible, add to list
                 let data = C::consume(&mut reader, &header)

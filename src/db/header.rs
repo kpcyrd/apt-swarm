@@ -101,13 +101,12 @@ impl BlockHeader {
             .context("Failed to read data length")?;
         let data_length = DataLength::from_be_bytes(data_length_bytes);
 
-        Ok((
-            BlockHeader {
-                hash,
-                length: data_length,
-            },
-            n,
-        ))
+        let header = BlockHeader {
+            hash,
+            length: data_length,
+        };
+        trace!("Parsed block header: {header:?}");
+        Ok((header, n))
     }
 
     pub async fn write<W: AsyncWrite + Unpin>(&self, mut writer: W) -> Result<usize> {

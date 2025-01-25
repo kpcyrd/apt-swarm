@@ -64,7 +64,6 @@ impl Exclusive {
         let (header, n) = BlockHeader::parse(&mut reader)
             .await
             .with_context(|| anyhow!("Failed to read block header: {path:?}"))?;
-        trace!("Parsed block header: {header:?}");
 
         // skip over data, verify the expected number of bytes is present
         consume::CheckedSkipValue::consume(&mut reader, &header)
