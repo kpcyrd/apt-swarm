@@ -12,7 +12,7 @@ use tokio::time;
 
 fn random_nickname() -> String {
     let mut buf = [0u8; 3];
-    getrandom::getrandom(&mut buf).expect("Failed to use getrandom");
+    getrandom::fill(&mut buf).expect("Failed to use getrandom");
     let name = format!("apt-swarm-{}", hex::encode(buf));
     name
 }
