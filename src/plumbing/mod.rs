@@ -270,7 +270,25 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
         }
         #[cfg(feature = "onions")]
         Plumbing::OnionService(_onion) => {
-            p2p::onions::spawn().await?;
+            let config = config?;
+            let path = config.arti_path()?;
+            p2p::onions::spawn(path).await?;
+        }
+        #[cfg(feature = "onions")]
+        Plumbing::ResetArti(_reset) => {
+            let config = config?;
+            let path = config.arti_path()?;
+            info!("Deleting directory: {path:?}");
+            fs::remove_dir_all(&path)
+                .await
+                .or_else(|err| {
+                    if err.kind() == io::ErrorKind::NotFound {
+                        Ok(())
+                    } else {
+                        Err(err)
+                    }
+                })
+                .with_context(|| anyhow!("Failed to delete directory: {path:?}"))?;
         }
         Plumbing::Migrate(_migrate) => {
             let config = config?;

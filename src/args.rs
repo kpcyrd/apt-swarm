@@ -217,6 +217,8 @@ pub enum Plumbing {
     DbServer(DbServer),
     #[cfg(feature = "onions")]
     OnionService(OnionService),
+    #[cfg(feature = "onions")]
+    ResetArti(ResetArti),
     Migrate(Migrate),
     Fsck(Fsck),
     Completions(Completions),
@@ -328,6 +330,10 @@ pub struct DbServer {}
 /// Bind and run hidden service
 #[derive(Debug, Parser)]
 pub struct OnionService {}
+
+/// Delete all data related to the Tor network
+#[derive(Debug, Parser)]
+pub struct ResetArti {}
 
 /// Open a fresh database and re-import the old data
 #[derive(Debug, Parser)]
