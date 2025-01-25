@@ -15,6 +15,10 @@ members = ["fuzz"]
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 
+[features]
+default = ["git"]
+git = ["gix", "gix-object"]
+
 [dependencies]
 advisory-lock = "0.3.0"
 anyhow = "1.0.68"
@@ -25,13 +29,13 @@ bytes = "1.4.0"
 clap = { version = "4.0.32", features = ["derive", "env"] }
 clap_complete = "4.0.7"
 colored = "3"
-dirs = "5"
+dirs = "6"
 env_logger = "0.11"
 fastrand = "2"
 futures = "0.3.26"
-getrandom = "0.2.8"
-gix = "0.69"
-gix-object = "0.46"
+getrandom = "0.3"
+gix = { version = "0.70", optional = true }
+gix-object = { version = "0.47", optional = true }
 hex = "0.4.3"
 indexmap = "2"
 ipnetwork = "0.21"

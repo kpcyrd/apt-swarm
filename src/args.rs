@@ -1,4 +1,5 @@
 use crate::errors::*;
+#[cfg(feature = "git")]
 use crate::plumbing;
 use clap::{ArgAction, CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
@@ -201,7 +202,9 @@ pub enum Plumbing {
     SyncYield(SyncYield),
     SyncPull(SyncPull),
     ContainerUpdateCheck(ContainerUpdateCheck),
+    #[cfg(feature = "git")]
     GitObject(GitObject),
+    #[cfg(feature = "git")]
     GitScrape(GitScrape),
     AttachSig(AttachSig),
     DbServer(DbServer),
@@ -273,6 +276,7 @@ pub struct ContainerUpdateCheck {
     pub commit: String,
 }
 
+#[cfg(feature = "git")]
 /// Convert signed git objects into signature format used by apt-swarm
 #[derive(Debug, Parser)]
 pub struct GitObject {
