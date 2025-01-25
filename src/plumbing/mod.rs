@@ -275,6 +275,12 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
             p2p::onions::spawn(path).await?;
         }
         #[cfg(feature = "onions")]
+        Plumbing::OnionConnect(onion) => {
+            let config = config?;
+            let path = config.arti_path()?;
+            p2p::onions::connect(path, &onion.onion, onion.port).await?;
+        }
+        #[cfg(feature = "onions")]
         Plumbing::ResetArti(_reset) => {
             let config = config?;
             let path = config.arti_path()?;
