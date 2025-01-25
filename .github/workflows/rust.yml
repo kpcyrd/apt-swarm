@@ -60,6 +60,13 @@ jobs:
 
   unit-test:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          - name: default
+          - name: none
+            flags: --no-default-features
     steps:
     - uses: actions/checkout@v4
 
@@ -78,7 +85,7 @@ jobs:
     - name: Run clippy
       run: cargo clippy -- -D warnings
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose ${{ matrix.features.flags }}
 
   fmt:
     runs-on: ubuntu-24.04
