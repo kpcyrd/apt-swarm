@@ -268,6 +268,10 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                 ret = p2p::db::spawn_unix_db_server(&db_client, db_socket_path) => ret,
             }?;
         }
+        #[cfg(feature = "onions")]
+        Plumbing::OnionService(_onion) => {
+            p2p::onions::spawn().await?;
+        }
         Plumbing::Migrate(_migrate) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
