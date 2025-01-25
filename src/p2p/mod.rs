@@ -4,6 +4,8 @@ pub mod dns;
 pub mod fetch;
 #[cfg(feature = "irc")]
 pub mod irc;
+#[cfg(feature = "onions")]
+pub mod onions;
 pub mod peering;
 pub mod proto;
 pub mod sync;
@@ -142,6 +144,11 @@ pub async fn spawn(
     // if irc is not enabled, supress an unused variable warning
     #[cfg(not(feature = "irc"))]
     let _ = (peering_tx, irc_rx);
+
+    #[cfg(feature = "onions")]
+    if p2p.onions {
+        set.spawn(onions::spawn());
+    }
 
     info!("Successfully started p2p node...");
     let result = set
