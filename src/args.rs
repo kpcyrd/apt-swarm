@@ -270,6 +270,8 @@ pub enum Plumbing {
     Index(Index),
     Migrate(Migrate),
     #[cfg(feature = "onions")]
+    OnionConnect(OnionConnect),
+    #[cfg(feature = "onions")]
     OnionService(OnionService),
     Paths(Paths),
     PeerdbAdd(PeerdbAdd),
@@ -397,6 +399,13 @@ pub struct Index {
 /// Open a fresh database and re-import the old data
 #[derive(Debug, Parser)]
 pub struct Migrate {}
+
+/// Connect to hidden service
+#[derive(Debug, Parser)]
+pub struct OnionConnect {
+    pub onion: String,
+    pub port: u16,
+}
 
 /// Bind and run hidden service
 #[derive(Debug, Parser)]
