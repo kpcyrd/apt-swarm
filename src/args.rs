@@ -218,6 +218,8 @@ pub enum Plumbing {
     #[cfg(feature = "onions")]
     OnionService(OnionService),
     #[cfg(feature = "onions")]
+    OnionConnect(OnionConnect),
+    #[cfg(feature = "onions")]
     ResetArti(ResetArti),
     Migrate(Migrate),
     Fsck(Fsck),
@@ -330,6 +332,13 @@ pub struct DbServer {}
 /// Bind and run hidden service
 #[derive(Debug, Parser)]
 pub struct OnionService {}
+
+/// Connect to hidden service
+#[derive(Debug, Parser)]
+pub struct OnionConnect {
+    pub onion: String,
+    pub port: u16,
+}
 
 /// Delete all data related to the Tor network
 #[derive(Debug, Parser)]

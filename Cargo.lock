@@ -250,6 +250,7 @@ dependencies = [
  "tor-cell",
  "tor-hsservice",
  "tor-proto",
+ "tor-rtcompat",
  "tracing",
 ]
 
