@@ -61,7 +61,4 @@ pub trait DatabaseClient {
     async fn get_value(&self, key: &[u8]) -> Result<Value>;
 
     async fn count(&mut self, prefix: &[u8]) -> Result<u64>;
-
-    /// This function doesn't need to be called explicitly, but calling it allows better error handling than `drop` does
-    async fn flush(&mut self) -> Result<()>;
 }

@@ -294,8 +294,6 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                         new_db.add_release(&fp, &variant).await?;
                     }
                 }
-
-                new_db.flush().await?;
             }
 
             info!("Moving database from {migrate_path:?} to {delete_path:?} for deletion...");

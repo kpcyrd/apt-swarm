@@ -17,7 +17,6 @@ pub enum Query {
     IndexFromScan(SyncQuery),
     // Delete(BString),
     Count(BString),
-    Flush,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -141,12 +140,6 @@ impl DatabaseClient for DatabaseUnixClient {
             bail!("Unexpected response type from database: {count:?}");
         }
     }
-
-    async fn flush(&mut self) -> Result<()> {
-        self.send_query(&Query::Flush).await?;
-        self.recv_response().await?;
-        Ok(())
-    }
 }
 
 pub enum DatabaseHandle {
@@ -188,13 +181,6 @@ impl DatabaseClient for DatabaseHandle {
         match self {
             Self::Direct(db) => db.count(prefix).await,
             Self::Unix(unix) => unix.count(prefix).await,
-        }
-    }
-
-    async fn flush(&mut self) -> Result<()> {
-        match self {
-            Self::Direct(db) => db.flush().await,
-            Self::Unix(unix) => unix.flush().await,
         }
     }
 }

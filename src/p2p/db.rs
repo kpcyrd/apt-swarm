@@ -31,10 +31,6 @@ pub async fn serve_request(db: &mut DatabaseServerClient, buf: &[u8]) -> Result<
             let count = db.count(&key).await?;
             Ok(Response::Num(count))
         }
-        Query::Flush => {
-            db.flush().await?;
-            Ok(Response::Ok)
-        }
     }
 }
 

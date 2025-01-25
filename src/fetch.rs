@@ -89,7 +89,6 @@ pub async fn fetch_updates<D: DatabaseClient>(
             break;
         }
     }
-    db.flush().await.context("Failed to flush database")?;
 
     Ok(())
 }
