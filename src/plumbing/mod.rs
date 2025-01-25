@@ -1,3 +1,4 @@
+#[cfg(feature = "git")]
 pub mod git;
 pub mod update;
 
@@ -15,7 +16,6 @@ use crate::sync;
 use bstr::{BStr, BString};
 use colored::Colorize;
 use futures::StreamExt;
-use gix::object::Kind;
 use std::borrow::Cow;
 use std::sync::LazyLock;
 use tokio::fs;
@@ -168,6 +168,7 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                 );
             }
         },
+        #[cfg(feature = "git")]
         Plumbing::GitObject(git) => {
             for path in &git.paths {
                 let mut buf = Vec::new();
@@ -180,9 +181,11 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                 io::stdout().write_all(&normalized).await?;
             }
         }
+        #[cfg(feature = "git")]
         Plumbing::GitScrape(git) => {
-            let mut stdout = io::stdout();
+            use gix::object::Kind;
 
+            let mut stdout = io::stdout();
             for path in git.paths {
                 info!("Opening git repository: {:?}", path);
                 let repo = gix::open(&path)
