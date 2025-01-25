@@ -275,6 +275,8 @@ pub enum Plumbing {
     PeerdbAdd(PeerdbAdd),
     PeerdbList(PeerdbList),
     PeerdbGc(PeerdbGc),
+    #[cfg(feature = "onions")]
+    ResetArti(ResetArti),
     SyncPull(SyncPull),
     SyncYield(SyncYield),
 }
@@ -420,6 +422,10 @@ pub struct PeerdbList {
 /// Remove old peerdb entries
 #[derive(Debug, Parser)]
 pub struct PeerdbGc {}
+
+/// Delete all data related to the Tor network
+#[derive(Debug, Parser)]
+pub struct ResetArti {}
 
 /// Fetch all available signatures over stdio (use with sync-yield)
 #[derive(Debug, Parser)]

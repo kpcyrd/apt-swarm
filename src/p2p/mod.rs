@@ -20,6 +20,7 @@ use crate::keyring::Keyring;
 use crate::p2p::peerdb::PeerDb;
 use socket2::{Domain, Socket, Type};
 use std::convert::Infallible;
+use std::mem;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::net::TcpSocket;
@@ -46,7 +47,7 @@ pub async fn random_jitter(jitter: Duration) {
 pub async fn spawn(
     db: Database,
     keyring: Keyring,
-    config: Config,
+    mut config: Config,
     p2p: P2p,
     proxy: Option<SocketAddr>,
 ) -> Result<Infallible> {
@@ -109,7 +110,7 @@ pub async fn spawn(
     if !p2p.no_fetch {
         let mut db_client = db_client.clone();
         let keyring = keyring.clone();
-        let repositories = config.data.repositories;
+        let repositories = mem::take(&mut config.data.repositories);
         set.spawn(async move {
             fetch::spawn_fetch_timer(
                 &mut db_client,
@@ -154,7 +155,8 @@ pub async fn spawn(
 
     #[cfg(feature = "onions")]
     if p2p.onions {
-        set.spawn(onions::spawn());
+        let path = config.arti_path()?;
+        set.spawn(onions::spawn(path));
     }
 
     info!("Successfully started p2p node...");

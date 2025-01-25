@@ -249,6 +249,9 @@ dependencies = [
  "tokio",
  "tokio-socks",
  "toml",
+ "tor-cell",
+ "tor-hsservice",
+ "tor-proto",
  "tracing",
  "url",
 ]
