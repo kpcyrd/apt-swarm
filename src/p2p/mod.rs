@@ -1,3 +1,4 @@
+#[cfg(unix)]
 pub mod db;
 pub mod fetch;
 pub mod irc;
@@ -51,15 +52,16 @@ pub async fn spawn(
     let mut set = JoinSet::new();
 
     let (mut db_server, mut db_client) = DatabaseServer::new(db);
-    {
-        set.spawn(async move {
-            db_server.run().await?;
-            bail!("Database server has terminated");
-        });
+    set.spawn(async move {
+        db_server.run().await?;
+        bail!("Database server has terminated");
+    });
 
+    #[cfg(unix)]
+    {
         let db_client = db_client.clone();
         let db_socket_path = config.db_socket_path()?;
-        set.spawn(async move { db::spawn_db_server(&db_client, db_socket_path).await });
+        set.spawn(async move { db::spawn_unix_db_server(&db_client, db_socket_path).await });
     }
 
     let (irc_tx, irc_rx) = mpsc::channel(32);

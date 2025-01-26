@@ -1,23 +1,25 @@
 use crate::db::consume::{self, Consume};
 use crate::db::header::BlockHeader;
 use crate::errors::*;
+#[cfg(unix)]
 use advisory_lock::{AdvisoryFileLock, FileLockMode};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use tokio::fs::File;
+use tokio::fs;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncSeek, BufReader};
 
 #[derive(Debug)]
 pub struct Lock {
     // we only need to hold this, but don't use it for anything
     #[allow(dead_code)]
-    file: File,
+    file: fs::File,
 }
 
 impl Lock {
+    #[cfg(unix)]
     pub async fn acquire(path: &Path) -> Result<Self> {
         debug!("Acquiring exclusive lock on directory: {path:?}");
-        let file = File::open(path)
+        let file = fs::File::open(path)
             .await
             .with_context(|| anyhow!("Failed to open directory: {path:?}"))?;
         let file = file.into_std().await;
@@ -25,6 +27,22 @@ impl Lock {
             .with_context(|| anyhow!("Failed to acquire exclusive lock for: {path:?}"))?;
         debug!("Successfully acquired exclusive lock");
         let file = file.into();
+        Ok(Self { file })
+    }
+
+    #[cfg(not(unix))]
+    pub async fn acquire(path: &Path) -> Result<Self> {
+        let path = path.join("lock");
+        debug!("Acquiring exclusive lock on file: {path:?}");
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .append(true)
+            // do not allow others to read or modify this file while we have it open
+            .share_mode(0)
+            .open(&path)
+            .await
+            .with_context(|| anyhow!("Failed to acquire exclusive lock for: {path:?}"))?;
         Ok(Self { file })
     }
 }
@@ -51,7 +69,7 @@ impl Exclusive {
         let file = tempfile::tempfile()?;
         Ok(Exclusive {
             lock: Lock {
-                file: File::from_std(file),
+                file: fs::File::from_std(file),
             },
             verified_shards: BTreeSet::new(),
         })
@@ -77,7 +95,7 @@ impl Exclusive {
     pub async fn ensure_tail_integrity<P: AsRef<Path>>(
         &mut self,
         path: P,
-        file: &mut File,
+        file: &mut fs::File,
     ) -> Result<()> {
         let path = path.as_ref();
         if !self.verified_shards.contains(path) {
@@ -128,11 +146,11 @@ mod tests {
         let _ = env_logger::builder().is_test(true).try_init();
     }
 
-    fn tempfile() -> Result<File> {
-        Ok(File::from_std(tempfile::tempfile()?))
+    fn tempfile() -> Result<fs::File> {
+        Ok(fs::File::from_std(tempfile::tempfile()?))
     }
 
-    async fn file_to_buf(file: &mut File) -> Result<Vec<u8>> {
+    async fn file_to_buf(file: &mut fs::File) -> Result<Vec<u8>> {
         file.rewind().await?;
         let mut buf = Vec::new();
         io::copy(file, &mut buf)

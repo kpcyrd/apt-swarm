@@ -4,11 +4,13 @@ pub mod update;
 
 use crate::args::{self, FileOrStdin, Plumbing};
 use crate::config::Config;
+#[cfg(unix)]
 use crate::db::channel::DatabaseServer;
 use crate::db::header::CryptoHash;
 use crate::db::{AccessMode, Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
+#[cfg(unix)]
 use crate::p2p;
 use crate::pgp;
 use crate::signed::Signed;
@@ -241,6 +243,7 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                 stdout.write_all(&text).await?;
             }
         }
+        #[cfg(unix)]
         Plumbing::DbServer(_server) => {
             let config = config?;
             let db = Database::open_directly(&config, AccessMode::Exclusive).await?;
@@ -250,7 +253,7 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
 
             tokio::select! {
                 _ = db_server.run() => bail!("Database server has terminated"),
-                ret = p2p::db::spawn_db_server(&db_client, db_socket_path) => ret,
+                ret = p2p::db::spawn_unix_db_server(&db_client, db_socket_path) => ret,
             }?;
         }
         Plumbing::Migrate(_migrate) => {

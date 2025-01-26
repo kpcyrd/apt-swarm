@@ -1,4 +1,4 @@
-use crate::db::unix::{ErrorResponse, Query, Response};
+use crate::db::proto::{ErrorResponse, Query, Response};
 use crate::db::{DatabaseClient, DatabaseServerClient};
 use crate::errors::*;
 use crate::sync;
@@ -67,7 +67,7 @@ pub async fn serve_db_client(db: &mut DatabaseServerClient, mut stream: UnixStre
     }
 }
 
-pub async fn spawn_db_server(db: &DatabaseServerClient, path: PathBuf) -> Result<Infallible> {
+pub async fn spawn_unix_db_server(db: &DatabaseServerClient, path: PathBuf) -> Result<Infallible> {
     fs::remove_file(&path).await.ok();
     let listener = UnixListener::bind(&path)
         .with_context(|| anyhow!("Failed to bind database socket at: {path:?}"))?;
