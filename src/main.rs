@@ -14,7 +14,6 @@ use env_logger::Env;
 use futures::StreamExt;
 use num_format::{Locale, ToFormattedString};
 use sequoia_openpgp::KeyHandle;
-use std::os::unix::ffi::OsStrExt;
 use std::sync::Arc;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt};
 

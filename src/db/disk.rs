@@ -1,9 +1,11 @@
+#[cfg(unix)]
+use super::unix::DatabaseUnixClient;
 use super::{
     compression, consume,
     consume::Consume as _,
     exclusive::Exclusive,
     header::{BlockHeader, CryptoHash},
-    DatabaseClient, DatabaseHandle, DatabaseUnixClient,
+    DatabaseClient, DatabaseHandle,
 };
 use crate::config::Config;
 use crate::db;
@@ -97,9 +99,9 @@ impl DatabaseClient for Database {
 
 impl Database {
     pub async fn open(config: &Config, mode: AccessMode) -> Result<DatabaseHandle> {
-        let sock_path = config.db_socket_path()?;
-
+        #[cfg(unix)]
         if mode != AccessMode::Exclusive {
+            let sock_path = config.db_socket_path()?;
             if let Ok(client) = DatabaseUnixClient::connect(&sock_path).await {
                 return Ok(DatabaseHandle::Unix(client));
             }

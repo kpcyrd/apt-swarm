@@ -4,11 +4,13 @@ pub mod consume;
 pub mod disk;
 pub mod exclusive;
 pub mod header;
+pub mod proto;
+#[cfg(unix)]
 pub mod unix;
 
 pub use self::channel::{DatabaseServer, DatabaseServerClient};
 pub use self::disk::{AccessMode, Database};
-pub use self::unix::{DatabaseHandle, DatabaseUnixClient};
+pub use self::proto::DatabaseHandle;
 
 use crate::errors::*;
 use crate::signed::Signed;

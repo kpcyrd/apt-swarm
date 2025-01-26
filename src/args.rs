@@ -135,7 +135,7 @@ pub struct Fetch {
 #[derive(Debug, Parser)]
 pub struct Ls {
     /// Use a specific prefix to filter by
-    pub prefix: Option<OsString>,
+    pub prefix: Option<String>,
     /// Count keys present in database instead of listing them
     #[arg(short = 's', long)]
     pub count: bool,
@@ -207,6 +207,7 @@ pub enum Plumbing {
     #[cfg(feature = "git")]
     GitScrape(GitScrape),
     AttachSig(AttachSig),
+    #[cfg(unix)]
     DbServer(DbServer),
     Migrate(Migrate),
     Fsck(Fsck),
