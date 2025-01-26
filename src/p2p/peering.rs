@@ -136,7 +136,7 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: Keyring,
     proxy: Option<SocketAddr>,
-    mut rx: mpsc::Receiver<p2p::irc::PeerGossip>,
+    mut rx: mpsc::Receiver<p2p::proto::PeerGossip>,
 ) -> Result<Infallible> {
     // keep track of connection attempts to avoid flooding
     let mut cooldown = Cooldowns::new();

@@ -49,7 +49,7 @@ pub async fn spawn_fetch_timer<D: DatabaseClient>(
     repositories: Vec<Repository>,
     proxy: Option<SocketAddr>,
     announce_addrs: Vec<SocketAddr>,
-    p2p_tx: mpsc::Sender<String>,
+    p2p_tx: Option<mpsc::Sender<String>>,
 ) -> Result<Infallible> {
     let mut stats = HashMap::new();
     for key in keyring.all_fingerprints() {
@@ -88,10 +88,12 @@ pub async fn spawn_fetch_timer<D: DatabaseClient>(
                             msg += &format!(" addr={addr}");
                         }
 
-                        trace!("Sending to p2p channel: {:?}", msg);
-                        // if the p2p channel crashed do not interrupt monitoring
-                        if let Err(err) = p2p_tx.try_send(msg) {
-                            warn!("Failed to send to p2p channel: {err:#}");
+                        if let Some(p2p_tx) = &p2p_tx {
+                            trace!("Sending to p2p channel: {:?}", msg);
+                            // if the p2p channel crashed do not interrupt monitoring
+                            if let Err(err) = p2p_tx.try_send(msg) {
+                                warn!("Failed to send to p2p channel: {err:#}");
+                            }
                         }
                         gossip.update_announced_index(idx);
                     }
