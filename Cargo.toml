@@ -18,7 +18,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 [features]
 default = ["git", "irc", "onions"]
 git = ["gix", "gix-object"]
-onions = ["arti-client", "tracing"]
+onions = ["arti-client", "tor-cell", "tor-hsservice", "tor-proto", "tor-rtcompat", "tracing"]
 
 [dependencies]
 advisory-lock = "0.3.0"
@@ -60,10 +60,10 @@ socket2 = "0.5"
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "io-util", "io-std", "fs", "process", "net"] }
 tokio-socks = "0.5.1"
 toml = "0.8"
-tor-cell = { version = "0.26.0", default-features = false }
-tor-hsservice = { version = "0.26.0", default-features = false }
-tor-proto = { version = "0.26.0", default-features = false }
-tor-rtcompat = { version = "0.26.0", default-features = false }
+tor-cell = { version = "0.26.0", optional = true, default-features = false }
+tor-hsservice = { version = "0.26.0", optional = true, default-features = false }
+tor-proto = { version = "0.26.0", optional = true, default-features = false }
+tor-rtcompat = { version = "0.26.0", optional = true, default-features = false }
 tracing = { version = "0.1.41", optional = true, default-features = false, features = ["log"] }
 url = "2.5"
 
