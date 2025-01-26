@@ -1,4 +1,5 @@
 use crate::errors::*;
+use crate::p2p;
 #[cfg(feature = "git")]
 use crate::plumbing;
 use clap::{ArgAction, CommandFactory, Parser, Subcommand};
@@ -207,6 +208,7 @@ pub enum Plumbing {
     #[cfg(feature = "git")]
     GitScrape(GitScrape),
     AttachSig(AttachSig),
+    DnsBootstrap(DnsBootstrap),
     #[cfg(unix)]
     DbServer(DbServer),
     Migrate(Migrate),
@@ -297,6 +299,20 @@ pub struct GitScrape {
 pub struct AttachSig {
     pub content: PathBuf,
     pub signatures: Vec<PathBuf>,
+}
+
+/// Run dns bootstrap query, print results
+#[derive(Debug, Parser)]
+pub struct DnsBootstrap {
+    /// Only print ipv4 records
+    #[arg(short = '4', long, group = "proto")]
+    pub ipv4_only: bool,
+    /// Only print ipv6 records
+    #[arg(short = '6', long, group = "proto")]
+    pub ipv6_only: bool,
+    /// The dns name to query
+    #[arg(default_values = p2p::dns::DNS_SEEDS)]
+    pub dns: Vec<String>,
 }
 
 /// Bind a unix domain socket and allow abstract database access from multiple processes

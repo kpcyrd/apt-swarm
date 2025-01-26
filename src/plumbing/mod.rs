@@ -243,6 +243,19 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                 stdout.write_all(&text).await?;
             }
         }
+        Plumbing::DnsBootstrap(bootstrap) => {
+            for dns in bootstrap.dns {
+                for addr in p2p::dns::resolve(&dns).await? {
+                    if bootstrap.ipv4_only && !addr.is_ipv4() {
+                        continue;
+                    }
+                    if bootstrap.ipv6_only && !addr.is_ipv6() {
+                        continue;
+                    }
+                    println!("{addr}");
+                }
+            }
+        }
         #[cfg(unix)]
         Plumbing::DbServer(_server) => {
             let config = config?;
