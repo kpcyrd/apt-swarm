@@ -16,6 +16,7 @@ use async_trait::async_trait;
 use bstr::BStr;
 use futures::{Stream, StreamExt};
 use sequoia_openpgp::Fingerprint;
+use std::borrow::Cow;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -47,11 +48,40 @@ fn folder_matches_prefix<'a>(folder: &str, full_prefix: &'a [u8]) -> Option<&'a 
 }
 
 fn file_matches_prefix(file: &str, prefix: &[u8]) -> bool {
+    // on windows we need to do extra normalization because `:` is illegal
+    #[cfg(not(unix))]
+    use bstr::ByteSlice;
+    #[cfg(not(unix))]
+    let file = file.replace(':', "_");
+    #[cfg(not(unix))]
+    let prefix = prefix.replace(b":", b"_");
+    #[cfg(not(unix))]
+    let prefix = &prefix;
+
+    // ensure filename qualifies for prefix we're looking for
     let prefix = prefix
         .split_at_checked(file.len())
         .map(|(prefix, _)| prefix)
         .unwrap_or(prefix);
     BStr::new(file.as_bytes()).starts_with(prefix)
+}
+
+fn derive_shard_name<'a>(key: &str, hash_str: &'a str) -> Result<Cow<'a, str>> {
+    let idx = hash_str
+        .find(':')
+        .with_context(|| anyhow!("Missing hash id in key: {key:?}"))?;
+
+    let (shard, _) = hash_str
+        .split_at_checked(idx + 1 + SHARD_ID_SIZE)
+        .with_context(|| anyhow!("Key is too short: {key:?}"))?;
+
+    // perform extra normalization if necessary
+    if cfg!(unix) {
+        Ok(Cow::Borrowed(shard))
+    } else {
+        let shard = shard.replace(':', "_");
+        Ok(Cow::Owned(shard))
+    }
 }
 
 #[derive(Debug)]
@@ -163,19 +193,13 @@ impl Database {
         info!("Adding document to database: {key:?}");
 
         // determine file to write to
-        let idx = hash_str
-            .find(':')
-            .with_context(|| anyhow!("Missing hash id in key: {key:?}"))?;
-
-        let (shard, _) = hash_str
-            .split_at_checked(idx + 1 + SHARD_ID_SIZE)
-            .with_context(|| anyhow!("Key is too short: {key:?}"))?;
+        let shard = derive_shard_name(&key, hash_str)?;
 
         let folder = self.path.join(fp_str);
         fs::create_dir_all(&folder)
             .await
             .with_context(|| anyhow!("Failed to create folder: {folder:?}"))?;
-        let path = folder.join(shard);
+        let path = folder.join(&*shard);
 
         // open file
         let mut file = fs::OpenOptions::new()

@@ -42,7 +42,7 @@ impl Lock {
             .share_mode(0)
             .open(&path)
             .await
-            .with_context(|| anyhow!("Failed to acquire exclusive lock: {path:?}"))?;
+            .with_context(|| anyhow!("Failed to acquire exclusive lock for: {path:?}"))?;
         Ok(Self { file })
     }
 }
