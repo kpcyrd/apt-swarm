@@ -1,8 +1,10 @@
 #[cfg(unix)]
 pub mod db;
 pub mod fetch;
+#[cfg(feature = "irc")]
 pub mod irc;
 pub mod peering;
+pub mod proto;
 pub mod sync;
 pub mod update_check;
 
@@ -33,10 +35,6 @@ const P2P_SYNC_CONNECT_JITTER: Duration = Duration::from_secs(3);
 const GOSSIP_IDLE_ANNOUNCE_INTERVAL: Duration = Duration::from_secs(3600 * 24); // 1h, set this to 24h later
 const P2P_SYNC_PORT_BACKLOG: u32 = 1024;
 
-const IRC_DEBOUNCE: Duration = Duration::from_millis(250);
-const IRC_RECONNECT_COOLDOWN: Duration = Duration::from_secs(60); // 1min
-const IRC_RECONNECT_JITTER: Duration = Duration::from_secs(60 * 3); // 3min
-
 pub async fn random_jitter(jitter: Duration) {
     let jitter = fastrand::u64(..jitter.as_secs());
     time::sleep(Duration::from_secs(jitter)).await;
@@ -65,6 +63,7 @@ pub async fn spawn(
     }
 
     let (irc_tx, irc_rx) = mpsc::channel(32);
+    let irc_tx = cfg!(feature = "irc").then(|| irc_tx);
 
     if !p2p.no_bind {
         for addr in p2p.bind {
@@ -125,14 +124,18 @@ pub async fn spawn(
         set.spawn(update_check::spawn_update_check(image, commit));
     }
 
-    if !p2p.no_irc {
-        // only starting this if irc is also enabled, because irc is currently the only way to get peers
-        let (peering_tx, peering_rx) = mpsc::channel(1024);
-        set.spawn(async move { peering::spawn(&mut db_client, keyring, proxy, peering_rx).await });
+    let (peering_tx, peering_rx) = mpsc::channel(1024);
+    set.spawn(async move { peering::spawn(&mut db_client, keyring, proxy, peering_rx).await });
 
+    #[cfg(feature = "irc")]
+    if !p2p.no_irc {
         // briefly delay the connection, so we don't spam irc in case something crashes immediately
-        set.spawn(irc::spawn_irc(Some(IRC_DEBOUNCE), irc_rx, peering_tx));
+        set.spawn(irc::spawn_irc(Some(irc::IRC_DEBOUNCE), irc_rx, peering_tx));
     }
+
+    // if irc is not enabled, supress an unused variable warning
+    #[cfg(not(feature = "irc"))]
+    let _ = (peering_tx, irc_rx);
 
     info!("Successfully started p2p node...");
     let result = set

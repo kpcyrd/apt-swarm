@@ -16,7 +16,7 @@ members = ["fuzz"]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 
 [features]
-default = ["git"]
+default = ["git", "irc"]
 git = ["gix", "gix-object"]
 
 [dependencies]
@@ -39,7 +39,7 @@ gix-object = { version = "0.47", optional = true }
 hex = "0.4.3"
 indexmap = "2"
 ipnetwork = "0.21"
-irc = { version = "1", default-features = false, features = ["tls-rust"] }
+irc = { version = "1", optional = true, default-features = false, features = ["tls-rust"] }
 log = "0.4.17"
 lru = "0.12"
 lz4_flex = "0.11.3"
