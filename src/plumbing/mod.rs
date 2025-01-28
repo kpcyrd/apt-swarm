@@ -10,7 +10,6 @@ use crate::db::header::CryptoHash;
 use crate::db::{AccessMode, Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
-#[cfg(unix)]
 use crate::p2p;
 use crate::pgp;
 use crate::signed::Signed;
