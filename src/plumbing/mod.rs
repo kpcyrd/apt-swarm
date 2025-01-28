@@ -10,7 +10,6 @@ use crate::db::header::CryptoHash;
 use crate::db::{AccessMode, Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
-#[cfg(unix)]
 use crate::p2p;
 use crate::pgp;
 use crate::signed::Signed;
@@ -241,6 +240,19 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                 let mut stdout = io::stdout();
                 let text = signed.to_clear_signed()?;
                 stdout.write_all(&text).await?;
+            }
+        }
+        Plumbing::DnsBootstrap(bootstrap) => {
+            for dns in bootstrap.dns {
+                for addr in p2p::dns::resolve(&dns).await? {
+                    if bootstrap.ipv4_only && !addr.is_ipv4() {
+                        continue;
+                    }
+                    if bootstrap.ipv6_only && !addr.is_ipv6() {
+                        continue;
+                    }
+                    println!("{addr}");
+                }
             }
         }
         #[cfg(unix)]

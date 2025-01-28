@@ -1,5 +1,6 @@
 #[cfg(unix)]
 pub mod db;
+pub mod dns;
 pub mod fetch;
 #[cfg(feature = "irc")]
 pub mod irc;
