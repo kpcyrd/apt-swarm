@@ -144,6 +144,11 @@ the network and it won't appear in your audit logs.
 
 apt-swarm can't detect network-partitioning attacks and doesn't intend to.
 
+## Trivia
+
+As part of this project, a parser bug was identified in Sequoia OpenPGP in 2023
+through fuzzing, as documented in [this issue](https://gitlab.com/sequoia-pgp/sequoia/-/issues/1005).
+
 ## Funding
 
 [![](.github/lolgpt.png)](https://github.com/sponsors/kpcyrd)
