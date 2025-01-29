@@ -75,6 +75,12 @@ impl Config {
         Ok(path)
     }
 
+    pub fn arti_path(&self) -> Result<PathBuf> {
+        let data_dir = self.apt_swarm_path()?;
+        let path = data_dir.join("arti");
+        Ok(path)
+    }
+
     pub fn database_path(&self) -> Result<PathBuf> {
         let data_dir = self.apt_swarm_path()?;
         let path = data_dir.join("storage");

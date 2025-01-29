@@ -4,6 +4,8 @@ pub mod dns;
 pub mod fetch;
 #[cfg(feature = "irc")]
 pub mod irc;
+#[cfg(feature = "onions")]
+pub mod onions;
 pub mod peering;
 pub mod proto;
 pub mod sync;
@@ -16,6 +18,7 @@ use crate::errors::*;
 use crate::keyring::Keyring;
 use socket2::{Domain, Socket, Type};
 use std::convert::Infallible;
+use std::mem;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::net::TcpSocket;
@@ -44,7 +47,7 @@ pub async fn random_jitter(jitter: Duration) {
 pub async fn spawn(
     db: Database,
     keyring: Keyring,
-    config: Config,
+    mut config: Config,
     p2p: P2p,
     proxy: Option<SocketAddr>,
 ) -> Result<Infallible> {
@@ -100,7 +103,7 @@ pub async fn spawn(
     if !p2p.no_fetch {
         let mut db_client = db_client.clone();
         let keyring = keyring.clone();
-        let repositories = config.data.repositories;
+        let repositories = mem::take(&mut config.data.repositories);
         set.spawn(async move {
             fetch::spawn_fetch_timer(
                 &mut db_client,
@@ -137,6 +140,12 @@ pub async fn spawn(
     // if irc is not enabled, supress an unused variable warning
     #[cfg(not(feature = "irc"))]
     let _ = (peering_tx, irc_rx);
+
+    #[cfg(feature = "onions")]
+    if p2p.onions {
+        let path = config.arti_path()?;
+        set.spawn(onions::spawn(path));
+    }
 
     info!("Successfully started p2p node...");
     let result = set

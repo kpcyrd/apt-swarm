@@ -175,6 +175,10 @@ pub struct P2p {
     /// Do not actively fetch updates from the configured repositories
     #[arg(long)]
     pub no_fetch: bool,
+    #[cfg(feature = "onions")]
+    /// Setup a hidden service and support outbound onion connections
+    #[arg(long)]
+    pub onions: bool,
     /// Do not bind a sync port for p2p traffic
     #[arg(long)]
     pub no_bind: bool,
@@ -211,6 +215,12 @@ pub enum Plumbing {
     DnsBootstrap(DnsBootstrap),
     #[cfg(unix)]
     DbServer(DbServer),
+    #[cfg(feature = "onions")]
+    OnionService(OnionService),
+    #[cfg(feature = "onions")]
+    OnionConnect(OnionConnect),
+    #[cfg(feature = "onions")]
+    ResetArti(ResetArti),
     Migrate(Migrate),
     Fsck(Fsck),
     Completions(Completions),
@@ -318,6 +328,21 @@ pub struct DnsBootstrap {
 /// Bind a unix domain socket and allow abstract database access from multiple processes
 #[derive(Debug, Parser)]
 pub struct DbServer {}
+
+/// Bind and run hidden service
+#[derive(Debug, Parser)]
+pub struct OnionService {}
+
+/// Connect to hidden service
+#[derive(Debug, Parser)]
+pub struct OnionConnect {
+    pub onion: String,
+    pub port: u16,
+}
+
+/// Delete all data related to the Tor network
+#[derive(Debug, Parser)]
+pub struct ResetArti {}
 
 /// Open a fresh database and re-import the old data
 #[derive(Debug, Parser)]
