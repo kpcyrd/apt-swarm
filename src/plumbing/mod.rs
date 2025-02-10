@@ -269,10 +269,10 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
             }?;
         }
         #[cfg(feature = "onions")]
-        Plumbing::OnionService(_onion) => {
+        Plumbing::OnionService(onion) => {
             let config = config?;
             let path = config.arti_path()?;
-            p2p::onions::spawn(path).await?;
+            p2p::onions::spawn(path, onion.options).await?;
         }
         #[cfg(feature = "onions")]
         Plumbing::OnionConnect(onion) => {

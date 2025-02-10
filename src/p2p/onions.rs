@@ -1,3 +1,4 @@
+use crate::args;
 use crate::errors::*;
 use arti_client::{
     config::{onion_service::OnionServiceConfigBuilder, TorClientConfigBuilder},
@@ -8,7 +9,9 @@ use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tor_cell::relaycell::msg::Connected;
+use tor_config::ExplicitOrAuto;
 use tor_hsservice::StreamRequest;
+use tor_keymgr::config::ArtiKeystoreKind;
 use tor_proto::stream::IncomingStreamRequest;
 use tor_rtcompat::PreferredRuntime;
 
@@ -50,7 +53,15 @@ async fn setup(path: &Path) -> Result<TorClient<PreferredRuntime>> {
     let state_dir = path.join("state");
     let cache_dir = path.join("cache");
 
-    let config = TorClientConfigBuilder::from_directories(state_dir, cache_dir)
+    let mut config = TorClientConfigBuilder::from_directories(state_dir, cache_dir);
+
+    config
+        .storage()
+        .keystore()
+        .primary()
+        .kind(ExplicitOrAuto::Explicit(ArtiKeystoreKind::Ephemeral));
+
+    let config = config
         .build()
         .context("Failed to setup tor client config")?;
 
@@ -101,7 +112,12 @@ pub async fn connect(path: PathBuf, onion: &str, port: u16) -> Result<()> {
     Ok(())
 }
 
-pub async fn spawn(path: PathBuf) -> Result<Infallible> {
+pub async fn spawn(path: PathBuf, config: args::OnionOptions) -> Result<Infallible> {
+    // if requested, acquire a guard that disables log scrubbing for the time it's held
+    let _guard: Option<_> = config
+        .onions_log_sensitive_information
+        .then(safelog::disable_safe_logging)
+        .transpose()?;
     let tor_client = setup(&path).await?;
 
     info!("Setting up hidden service...");
