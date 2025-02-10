@@ -13,6 +13,12 @@ pub const IRC_DEBOUNCE: Duration = Duration::from_millis(250);
 pub const IRC_RECONNECT_COOLDOWN: Duration = Duration::from_secs(60); // 1min
 pub const IRC_RECONNECT_JITTER: Duration = Duration::from_secs(60 * 3); // 3min
 
+const IRC_CLIENT_ID: &str = concat!(
+    "p2p bootstrap - v",
+    env!("CARGO_PKG_VERSION"),
+    " https://github.com/kpcyrd/apt-swarm"
+);
+
 fn random_nickname() -> String {
     let mut buf = [0u8; 3];
     getrandom::fill(&mut buf).expect("Failed to use getrandom");
@@ -32,7 +38,7 @@ pub async fn connect_irc(
         nickname: Some(nickname),
         server: Some("irc.hackint.org".to_string()),
         channels: vec![channel.to_string()],
-        realname: Some("p2p bootstrap https://github.com/kpcyrd/apt-swarm".to_string()),
+        realname: Some(IRC_CLIENT_ID.to_string()),
         use_tls: Some(true),
         ..Default::default()
     };
