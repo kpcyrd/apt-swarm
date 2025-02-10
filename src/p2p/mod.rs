@@ -154,9 +154,9 @@ pub async fn spawn(
     let _ = irc_rx;
 
     #[cfg(feature = "onions")]
-    if p2p.onions {
+    if p2p.onions.enabled {
         let path = config.arti_path()?;
-        set.spawn(onions::spawn(path));
+        set.spawn(onions::spawn(path, p2p.onions.options));
     }
 
     info!("Successfully started p2p node...");

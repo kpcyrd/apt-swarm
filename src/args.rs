@@ -208,9 +208,8 @@ pub struct P2p {
     #[arg(long)]
     pub no_fetch: bool,
     #[cfg(feature = "onions")]
-    /// Setup a hidden service and support outbound onion connections
-    #[arg(long)]
-    pub onions: bool,
+    #[command(flatten)]
+    pub onions: P2pOnions,
     /// Do not bind a sync port for p2p traffic
     #[arg(long)]
     pub no_bind: bool,
@@ -247,6 +246,24 @@ pub struct P2pDns {
     /// The dns names to query for bootstrapping
     #[arg(long, default_values = p2p::dns::DNS_SEEDS)]
     pub dns: Vec<String>,
+}
+
+#[cfg(feature = "onions")]
+#[derive(Debug, Parser)]
+pub struct P2pOnions {
+    /// Setup a hidden service and support outbound onion connections
+    #[arg(long = "onions")]
+    pub enabled: bool,
+    #[command(flatten)]
+    pub options: OnionOptions,
+}
+
+#[cfg(feature = "onions")]
+#[derive(Debug, Parser)]
+pub struct OnionOptions {
+    /// Disable log scrubbing of e.g. Tor network IPs we're connecting to
+    #[arg(long)]
+    pub onions_log_sensitive_information: bool,
 }
 
 /// Access to low-level features
@@ -400,6 +417,7 @@ pub struct Index {
 #[derive(Debug, Parser)]
 pub struct Migrate {}
 
+#[cfg(feature = "onions")]
 /// Connect to hidden service
 #[derive(Debug, Parser)]
 pub struct OnionConnect {
@@ -407,9 +425,13 @@ pub struct OnionConnect {
     pub port: u16,
 }
 
+#[cfg(feature = "onions")]
 /// Bind and run hidden service
 #[derive(Debug, Parser)]
-pub struct OnionService {}
+pub struct OnionService {
+    #[command(flatten)]
+    pub options: OnionOptions,
+}
 
 /// Print configured paths
 #[derive(Debug, Parser)]
@@ -432,6 +454,7 @@ pub struct PeerdbList {
 #[derive(Debug, Parser)]
 pub struct PeerdbGc {}
 
+#[cfg(feature = "onions")]
 /// Delete all data related to the Tor network
 #[derive(Debug, Parser)]
 pub struct ResetArti {}

@@ -461,8 +461,10 @@ pub async fn run(
             p2p::onions::connect(path, &onion.onion, onion.port).await?;
         }
         #[cfg(feature = "onions")]
-        Plumbing::OnionService(_onion) => {
-            p2p::onions::spawn().await?;
+        Plumbing::OnionService(onion) => {
+            let config = config?;
+            let path = config.arti_path()?;
+            p2p::onions::spawn(path, onion.options).await?;
         }
         Plumbing::Fsck(fsck) => {
             let config = config?;
