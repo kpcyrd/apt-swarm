@@ -19,7 +19,7 @@ pub async fn serve_request(db: &mut DatabaseServerClient, buf: &[u8]) -> Result<
         Query::IndexFromScan(query) => {
             let fp = query.fp.parse().context("Failed to parse fingerprint")?;
             let index = db
-                .index_from_scan(&sync::Query {
+                .index_from_scan(&sync::TreeQuery {
                     fp,
                     hash_algo: query.hash_algo,
                     prefix: query.prefix,

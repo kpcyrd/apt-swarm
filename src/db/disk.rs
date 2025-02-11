@@ -100,7 +100,7 @@ impl DatabaseClient for Database {
         Ok(key)
     }
 
-    async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {
+    async fn index_from_scan(&mut self, query: &sync::TreeQuery) -> Result<(String, usize)> {
         sync::index_from_scan(self, query).await
     }
 

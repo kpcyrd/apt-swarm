@@ -25,11 +25,11 @@ pub type Value = Vec<u8>;
 pub trait DatabaseClient {
     async fn add_release(&mut self, fp: &Fingerprint, signed: &Signed) -> Result<String>;
 
-    async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)>;
+    async fn index_from_scan(&mut self, query: &sync::TreeQuery) -> Result<(String, usize)>;
 
     async fn batch_index_from_scan(
         &mut self,
-        query: &mut sync::Query,
+        query: &mut sync::TreeQuery,
     ) -> Result<(sync::BatchIndex, usize)> {
         let mut batch = sync::BatchIndex::new();
         let mut total = 0;

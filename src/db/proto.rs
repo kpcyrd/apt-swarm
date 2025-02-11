@@ -63,7 +63,7 @@ impl DatabaseClient for DatabaseHandle {
         }
     }
 
-    async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {
+    async fn index_from_scan(&mut self, query: &sync::TreeQuery) -> Result<(String, usize)> {
         match self {
             Self::Direct(db) => db.index_from_scan(query).await,
             #[cfg(unix)]

@@ -70,7 +70,7 @@ impl DatabaseClient for DatabaseUnixClient {
         }
     }
 
-    async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {
+    async fn index_from_scan(&mut self, query: &sync::TreeQuery) -> Result<(String, usize)> {
         self.send_query(&Query::IndexFromScan(SyncQuery {
             fp: query.fp.to_string(),
             hash_algo: query.hash_algo.clone(),
