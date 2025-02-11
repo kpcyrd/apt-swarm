@@ -129,9 +129,14 @@ pub async fn spawn(
     set.spawn(async move { peering::spawn(&mut db_client, keyring, proxy, peering_rx).await });
 
     #[cfg(feature = "irc")]
-    if !p2p.no_irc {
+    if !p2p.irc.no_irc {
         // briefly delay the connection, so we don't spam irc in case something crashes immediately
-        set.spawn(irc::spawn_irc(Some(irc::IRC_DEBOUNCE), irc_rx, peering_tx));
+        set.spawn(irc::spawn_irc(
+            Some(irc::IRC_DEBOUNCE),
+            irc_rx,
+            p2p.irc.irc_channel,
+            peering_tx,
+        ));
     }
 
     // if irc is not enabled, supress an unused variable warning

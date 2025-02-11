@@ -1,6 +1,7 @@
 use crate::db::{Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
+use crate::p2p::proto::PeerAddr;
 use crate::signed::Signed;
 use bstr::BStr;
 use futures::StreamExt;
@@ -190,8 +191,13 @@ impl BatchIndex {
     }
 }
 
-pub async fn connect(addr: SocketAddr, proxy: Option<SocketAddr>) -> Result<TcpStream> {
-    let target = proxy.unwrap_or(addr);
+pub async fn connect(addr: &PeerAddr, proxy: Option<SocketAddr>) -> Result<TcpStream> {
+    let PeerAddr::Inet(addr) = addr else {
+        bail!("Connecting to onions is not yet implemented")
+    };
+
+    // TODO: only do this for PeerAddr::Inet
+    let target = proxy.unwrap_or(*addr);
 
     info!("Creating tcp connection to {target:?}");
     let sock = TcpStream::connect(target);

@@ -186,7 +186,7 @@ async fn main() -> Result<()> {
             let keyring = Keyring::load(&config)?;
             let mut db = Database::open(&config, AccessMode::Exclusive).await?;
 
-            let mut sock = sync::connect(pull.addr, args.proxy).await?;
+            let mut sock = sync::connect(&pull.addr, args.proxy).await?;
             let (rx, mut tx) = sock.split();
 
             let result =

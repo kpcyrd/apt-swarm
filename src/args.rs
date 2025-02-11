@@ -1,5 +1,6 @@
 use crate::errors::*;
 use crate::p2p;
+use crate::p2p::proto::PeerAddr;
 #[cfg(feature = "git")]
 use crate::plumbing;
 use clap::{ArgAction, CommandFactory, Parser, Subcommand};
@@ -157,7 +158,7 @@ pub struct Keyring {
 #[derive(Debug, Parser)]
 pub struct Pull {
     /// The address to connect to
-    pub addr: SocketAddr,
+    pub addr: PeerAddr,
     /// Only sync data for specific keys, identified by their fingerprint
     #[arg(long = "key")]
     pub keys: Vec<sequoia_openpgp::Fingerprint>,
@@ -169,9 +170,9 @@ pub struct Pull {
 /// Run in p2p swarm mode
 #[derive(Debug, Parser)]
 pub struct P2p {
-    /// Do not connect to irc for peer discovery
-    #[arg(long)]
-    pub no_irc: bool,
+    #[cfg(feature = "irc")]
+    #[command(flatten)]
+    pub irc: P2pIrc,
     /// Do not actively fetch updates from the configured repositories
     #[arg(long)]
     pub no_fetch: bool,
@@ -190,6 +191,17 @@ pub struct P2p {
     /// The VCS commit to assume for our currently running image
     #[arg(long, value_name = "COMMIT", env = "UPDATE_CHECK_COMMIT")]
     pub update_assume_commit: Option<String>,
+}
+
+#[cfg(feature = "irc")]
+#[derive(Debug, Parser)]
+pub struct P2pIrc {
+    /// Do not connect to irc for peer discovery
+    #[arg(long)]
+    pub no_irc: bool,
+    /// The irc server and channel to connect to
+    #[arg(long, default_value = "ircs://irc.hackint.org/##apt-swarm-p2p")]
+    pub irc_channel: String,
 }
 
 /// Access to low-level features
