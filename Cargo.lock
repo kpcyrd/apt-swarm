@@ -201,6 +201,7 @@ dependencies = [
  "tokio",
  "tokio-socks",
  "toml",
+ "url",
 ]
 
 [[package]]

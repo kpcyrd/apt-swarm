@@ -8,6 +8,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::time;
+use url::Url;
 
 pub const IRC_DEBOUNCE: Duration = Duration::from_millis(250);
 pub const IRC_RECONNECT_COOLDOWN: Duration = Duration::from_secs(60); // 1min
@@ -26,13 +27,40 @@ fn random_nickname() -> String {
     name
 }
 
+fn parse_channel(url: &str) -> Result<(String, String)> {
+    let url = Url::parse(url).with_context(|| anyhow!("Failed to parse url: {url:?}"))?;
+
+    if url.scheme() != "ircs" {
+        bail!("Only secure ircs:// links are supported: {url:?}");
+    }
+
+    let mut host = url
+        .host_str()
+        .with_context(|| anyhow!("Could not found host in irc url: {url:?}"))?
+        .to_string();
+
+    if let Some(port) = url.port() {
+        host += &format!(":{port}");
+    }
+
+    if !["", "/"].contains(&url.path()) {
+        bail!("Found unexpected path in irc url: {url:?}");
+    }
+
+    let fragment = url
+        .fragment()
+        .with_context(|| anyhow!("Could not find channel in irc url: {url:?}"))?;
+    Ok((host, format!("#{fragment}")))
+}
+
 pub async fn connect_irc(
     rx: &mut mpsc::Receiver<String>,
+    irc: &(String, String),
     peering_tx: &mpsc::Sender<PeerGossip>,
 ) -> Result<Infallible> {
-    info!("Connecting to irc for peer discovery...");
+    let (server, channel) = irc;
+    info!("Connecting to irc for peer discovery (server={server:?}, channel={channel:?})...");
     let nickname = random_nickname();
-    let channel = "##apt-swarm-p2p";
 
     let config = Config {
         nickname: Some(nickname),
@@ -59,7 +87,7 @@ pub async fn connect_irc(
                     match message.command {
                         Command::PRIVMSG(target, msg) => {
                             debug!("Received irc privmsg: {:?}: {:?}", target, msg);
-                            if target != channel {
+                            if target != *channel {
                                 continue;
                             }
 
@@ -104,17 +132,51 @@ pub async fn connect_irc(
 pub async fn spawn_irc(
     debounce: Option<Duration>,
     mut rx: mpsc::Receiver<String>,
+    url: String,
     peering_tx: mpsc::Sender<PeerGossip>,
 ) -> Result<Infallible> {
     if let Some(debounce) = debounce {
         tokio::time::sleep(debounce).await;
     }
 
+    let irc = parse_channel(&url)?;
     loop {
-        let Err(err) = connect_irc(&mut rx, &peering_tx).await;
+        let Err(err) = connect_irc(&mut rx, &irc, &peering_tx).await;
         error!("irc connection has crashed: {err:#}");
 
         time::sleep(IRC_RECONNECT_COOLDOWN).await;
         p2p::random_jitter(IRC_RECONNECT_JITTER).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_irc_url() {
+        let url = "ircs://irc.hackint.org/##apt-swarm-p2p";
+        let (server, channel) = parse_channel(url).unwrap();
+        assert_eq!(server, "irc.hackint.org");
+        assert_eq!(channel, "##apt-swarm-p2p");
+
+        let url = "ircs://irc.hackint.org##apt-swarm-p2p";
+        let (server, channel) = parse_channel(url).unwrap();
+        assert_eq!(server, "irc.hackint.org");
+        assert_eq!(channel, "##apt-swarm-p2p");
+
+        let url = "ircs://irc.hackint.org:1337/##apt-swarm-p2p";
+        let (server, channel) = parse_channel(url).unwrap();
+        assert_eq!(server, "irc.hackint.org:1337");
+        assert_eq!(channel, "##apt-swarm-p2p");
+    }
+
+    #[test]
+    fn test_parse_irc_invalid() {
+        assert!(parse_channel("irc://irc.hackint.org/##apt-swarm-p2p").is_err());
+        assert!(parse_channel("https://irc.hackint.org/##apt-swarm-p2p").is_err());
+        assert!(parse_channel("ircs://irc.hackint.org/").is_err());
+        assert!(parse_channel("ircs://irc.hackint.org/abc").is_err());
+        assert!(parse_channel("ircs://irc.hackint.org/abc##apt-swarm-p2p").is_err());
     }
 }
