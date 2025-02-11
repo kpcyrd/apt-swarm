@@ -2,6 +2,7 @@ use crate::db::DatabaseClient;
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::p2p;
+use crate::p2p::proto::PeerAddr;
 use crate::sync;
 use ipnetwork::IpNetwork;
 use sequoia_openpgp::Fingerprint;
@@ -43,7 +44,7 @@ pub async fn pull_from_peer<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: &Keyring,
     fingerprints: &[Fingerprint],
-    addr: SocketAddr,
+    addr: &PeerAddr,
     proxy: Option<SocketAddr>,
 ) -> Result<()> {
     let mut sock = sync::connect(addr, proxy).await?;
@@ -81,7 +82,7 @@ impl CooldownEntry {
 #[derive(Debug)]
 pub struct Cooldowns {
     ip_cache: lru::LruCache<IpAddr, CooldownEntry>,
-    port_cache: lru::LruCache<SocketAddr, time::Instant>,
+    port_cache: lru::LruCache<PeerAddr, time::Instant>,
 }
 
 impl Cooldowns {
@@ -94,35 +95,40 @@ impl Cooldowns {
         }
     }
 
-    pub fn can_approach(&mut self, addr: SocketAddr) -> bool {
+    pub fn can_approach(&mut self, addr: &PeerAddr) -> bool {
         let now = time::Instant::now();
 
-        if addr.port() != STANDARD_P2P_PORT {
-            if let Some(entry) = self.ip_cache.get_mut(&addr.ip()) {
-                if !entry.has_capacity() {
-                    return false;
+        if let PeerAddr::Inet(addr) = &addr {
+            if addr.port() != STANDARD_P2P_PORT {
+                if let Some(entry) = self.ip_cache.get_mut(&addr.ip()) {
+                    if !entry.has_capacity() {
+                        return false;
+                    }
                 }
             }
         }
 
-        if let Some(entry) = self.port_cache.get(&addr) {
+        if let Some(entry) = self.port_cache.get(addr) {
             now >= *entry
         } else {
             true
         }
     }
 
-    pub fn mark_ok(&mut self, addr: SocketAddr) {
+    pub fn mark_ok(&mut self, addr: PeerAddr) {
         self.port_cache
             .put(addr, time::Instant::now() + COOLDOWN_PORT_AFTER_SUCCESS);
     }
 
-    pub fn mark_bad(&mut self, addr: SocketAddr) {
+    pub fn mark_bad(&mut self, addr: PeerAddr) {
+        if let PeerAddr::Inet(addr) = &addr {
+            self.ip_cache
+                .get_or_insert_mut(addr.ip(), CooldownEntry::default)
+                .mark_bad();
+        }
+
         self.port_cache
             .put(addr, time::Instant::now() + COOLDOWN_PORT_AFTER_ERROR);
-        self.ip_cache
-            .get_or_insert_mut(addr.ip(), CooldownEntry::default)
-            .mark_bad();
     }
 }
 
@@ -145,16 +151,20 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
         // TODO: only connect if we're not already in sync
         // TODO: allow concurrent syncs
 
-        for addr in gossip.addrs {
-            for block in P2P_BLOCK_LIST.iter() {
-                if block.contains(addr.ip()) {
-                    debug!("Address is on a blocklist, skipping: addr={addr:?}, block={block:?}");
+        for addr in &gossip.addrs {
+            if let PeerAddr::Inet(addr) = &addr {
+                for block in P2P_BLOCK_LIST.iter() {
+                    if block.contains(addr.ip()) {
+                        debug!(
+                            "Address is on a blocklist, skipping: addr={addr:?}, block={block:?}"
+                        );
+                        continue;
+                    }
+                }
+                if P2P_ILLEGAL_PORTS.contains(&addr.port()) {
+                    debug!("Port is on blocklist, skipping: addr={addr:?}");
                     continue;
                 }
-            }
-            if P2P_ILLEGAL_PORTS.contains(&addr.port()) {
-                debug!("Port is on blocklist, skipping: addr={addr:?}");
-                continue;
             }
 
             if !cooldown.can_approach(addr) {
@@ -169,12 +179,12 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
             debug!("Connection to {addr:?} has been closed");
             match ret {
                 Ok(_) => {
-                    cooldown.mark_ok(addr);
+                    cooldown.mark_ok(addr.clone());
                     break;
                 }
                 Err(err) => {
                     warn!("Error while syncing from peer {addr:?}: {err:#}");
-                    cooldown.mark_bad(addr);
+                    cooldown.mark_bad(addr.clone());
                 }
             }
         }

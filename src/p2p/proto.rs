@@ -7,7 +7,7 @@ pub struct PeerGossip {
     pub fp: sequoia_openpgp::Fingerprint,
     pub idx: String,
     pub count: u64,
-    pub addrs: Vec<SocketAddr>,
+    pub addrs: Vec<PeerAddr>,
 }
 
 impl FromStr for PeerGossip {
@@ -63,6 +63,42 @@ impl FromStr for PeerGossip {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PeerAddr {
+    Inet(SocketAddr),
+    Onion((String, u16)),
+}
+
+impl FromStr for PeerAddr {
+    type Err = Error;
+
+    fn from_str(addr: &str) -> Result<Self> {
+        if addr.starts_with('[') {
+            // IPv6 address
+            let addr = addr.parse()?;
+            Ok(PeerAddr::Inet(addr))
+        } else {
+            let Some((host, port)) = addr.rsplit_once(':') else {
+                bail!("Missing port in peer address: {addr:?}");
+            };
+            let port = port
+                .parse()
+                .with_context(|| anyhow!("Failed to parse port: {addr:?}"))?;
+
+            if host.ends_with(".onion") {
+                // .onion address
+                Ok(PeerAddr::Onion((host.to_string(), port)))
+            } else {
+                // IPv4 address
+                let host = host
+                    .parse()
+                    .with_context(|| anyhow!("Failed to parse ip address: {addr:?}"))?;
+                Ok(PeerAddr::Inet(SocketAddr::new(host, port)))
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,6 +134,30 @@ mod tests {
                 addrs: vec![
                     "192.0.2.146:16169".parse()?,
                     "[2001:db8:c010:8f3a::1]:16169".parse()?,
+                ],
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_irc_with_onion() -> Result<()> {
+        let s = "[sync] fp=2265EB4CB2BF88D900AE8D1B74A941BA219EC810 idx=sha256:55a00753512036f55ccc421217e008e4922c66592e6281b09de2fcba4dbd59ce count=12 addr=192.0.2.146:16169 addr=3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169";
+        let gi = s.parse::<PeerGossip>()?;
+        assert_eq!(
+            gi,
+            PeerGossip {
+                fp: "2265EB4CB2BF88D900AE8D1B74A941BA219EC810".parse()?,
+                idx: "sha256:55a00753512036f55ccc421217e008e4922c66592e6281b09de2fcba4dbd59ce"
+                    .to_string(),
+                count: 12,
+                addrs: vec![
+                    PeerAddr::Inet("192.0.2.146:16169".parse()?),
+                    PeerAddr::Onion((
+                        "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion"
+                            .to_string(),
+                        16169
+                    )),
                 ],
             }
         );

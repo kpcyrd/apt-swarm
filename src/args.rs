@@ -1,5 +1,6 @@
 use crate::errors::*;
 use crate::p2p;
+use crate::p2p::proto::PeerAddr;
 #[cfg(feature = "git")]
 use crate::plumbing;
 use clap::{ArgAction, CommandFactory, Parser, Subcommand};
@@ -157,7 +158,7 @@ pub struct Keyring {
 #[derive(Debug, Parser)]
 pub struct Pull {
     /// The address to connect to
-    pub addr: SocketAddr,
+    pub addr: PeerAddr,
     /// Only sync data for specific keys, identified by their fingerprint
     #[arg(long = "key")]
     pub keys: Vec<sequoia_openpgp::Fingerprint>,
