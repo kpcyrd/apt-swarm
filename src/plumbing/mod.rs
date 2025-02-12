@@ -121,7 +121,7 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
             let config = config?;
             let mut db = Database::open(&config, AccessMode::Relaxed).await?;
 
-            let mut q = sync::Query {
+            let mut q = sync::TreeQuery {
                 fp: query.fingerprint,
                 hash_algo: query.hash_algo,
                 prefix: query.prefix,

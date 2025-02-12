@@ -36,10 +36,10 @@ pub const BATCH_INDEX_MAX_SIZE: usize = 16;
 pub const SPILL_THRESHOLD: usize = 1;
 
 #[derive(Debug, Clone)]
-pub struct Query {
-    pub fp: Fingerprint,
-    pub hash_algo: String,
-    pub prefix: Option<String>,
+pub enum Query {
+    Tree(TreeQuery),
+    Pex,
+    Unknown(String),
 }
 
 impl Query {
@@ -51,7 +51,35 @@ impl Query {
             .with_context(|| anyhow!("Failed to parse input as query: {line:?}"))?;
         Ok(query)
     }
+}
 
+impl FromStr for Query {
+    type Err = Error;
+
+    fn from_str(query: &str) -> Result<Self> {
+        if let Some(cmd) = query.strip_prefix("//") {
+            if cmd == "pex" {
+                Ok(Query::Pex)
+            } else {
+                Ok(Query::Unknown(cmd.to_string()))
+            }
+        } else {
+            let query = query
+                .parse()
+                .context("Failed to parse input as tree-query")?;
+            Ok(Query::Tree(query))
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TreeQuery {
+    pub fp: Fingerprint,
+    pub hash_algo: String,
+    pub prefix: Option<String>,
+}
+
+impl TreeQuery {
     pub async fn write_to<W: AsyncWrite + Unpin>(&self, mut tx: W) -> Result<()> {
         let mut out = format!("{:X} {}", self.fp, self.hash_algo);
         if let Some(prefix) = &self.prefix {
@@ -98,7 +126,7 @@ impl Query {
     }
 }
 
-impl fmt::Display for Query {
+impl fmt::Display for TreeQuery {
     fn fmt(&self, w: &mut fmt::Formatter) -> fmt::Result {
         let prefix = self.prefix.as_deref().unwrap_or("");
         write!(w, "{:X}/{}:{}", self.fp, self.hash_algo, prefix)?;
@@ -106,7 +134,7 @@ impl fmt::Display for Query {
     }
 }
 
-impl FromStr for Query {
+impl FromStr for TreeQuery {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
@@ -125,7 +153,7 @@ impl FromStr for Query {
             bail!("Detected trailing data, rejecting as invalid: {garbage:?}");
         }
 
-        Ok(Query {
+        Ok(TreeQuery {
             fp,
             hash_algo: hash_algo.to_string(),
             prefix,
@@ -222,7 +250,7 @@ pub async fn connect(addr: &PeerAddr, proxy: Option<SocketAddr>) -> Result<TcpSt
     Ok(sock)
 }
 
-pub async fn index_from_scan(db: &Database, query: &Query) -> Result<(String, usize)> {
+pub async fn index_from_scan(db: &Database, query: &TreeQuery) -> Result<(String, usize)> {
     let prefix = query.to_string();
 
     let mut counter = 0;
@@ -278,25 +306,37 @@ pub async fn sync_yield<
             );
         }
 
-        let mut query = Query::from_bytes(&line)?;
+        let query = Query::from_bytes(&line)?;
         trace!("Received query: {:?}", query);
+        match query {
+            Query::Tree(mut query) => {
+                let (index, total) = db.batch_index_from_scan(&mut query).await?;
 
-        let (index, total) = db.batch_index_from_scan(&mut query).await?;
-
-        if total > 0 && total <= SPILL_THRESHOLD {
-            let prefix = query.to_string();
-            for (hash, data) in db.spill(prefix.as_bytes()).await? {
-                trace!("Sending data packet to client: {:?}", BStr::new(&hash));
-                tx.write_all(format!(":{:x}\n", data.len()).as_bytes())
-                    .await?;
-                tx.write_all(&data).await?;
+                if total > 0 && total <= SPILL_THRESHOLD {
+                    let prefix = query.to_string();
+                    for (hash, data) in db.spill(prefix.as_bytes()).await? {
+                        trace!("Sending data packet to client: {:?}", BStr::new(&hash));
+                        tx.write_all(format!(":{:x}\n", data.len()).as_bytes())
+                            .await?;
+                        tx.write_all(&data).await?;
+                    }
+                    tx.write_all(b":0\n").await?;
+                } else {
+                    index.write_to(&mut tx).await?;
+                    tx.write_all(b"\n").await?;
+                }
             }
-            tx.write_all(b":0\n").await?;
-        } else {
-            index.write_to(&mut tx).await?;
-            tx.write_all(b"\n").await?;
+            Query::Pex => {
+                // TODO
+                tx.write_all(b":0\n").await?;
+            }
+            Query::Unknown(data) => {
+                debug!("Received unknown command from network: {data:?}");
+                tx.write_all(b":0\n").await?;
+            }
         }
     }
+
     Ok(())
 }
 
@@ -340,7 +380,7 @@ pub async fn sync_pull_key<
     mut tx: W,
     rx: &mut io::BufReader<R>,
 ) -> Result<()> {
-    let mut query = Query {
+    let mut query = TreeQuery {
         fp: fp.clone(),
         hash_algo: "sha256".to_string(),
         prefix: None,

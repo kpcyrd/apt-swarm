@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 
 pub enum Query {
     AddRelease(Fingerprint, Signed, mpsc::Sender<String>),
-    IndexFromScan(sync::Query, mpsc::Sender<(String, usize)>),
+    IndexFromScan(sync::TreeQuery, mpsc::Sender<(String, usize)>),
     Spill(Vec<u8>, mpsc::Sender<Vec<(db::Key, db::Value)>>),
     GetValue(Vec<u8>, mpsc::Sender<db::Value>),
     // Delete(Vec<u8>, mpsc::Sender<()>),
@@ -85,7 +85,7 @@ impl DatabaseClient for DatabaseServerClient {
         self.request(query, rx).await
     }
 
-    async fn index_from_scan(&mut self, query: &sync::Query) -> Result<(String, usize)> {
+    async fn index_from_scan(&mut self, query: &sync::TreeQuery) -> Result<(String, usize)> {
         let (tx, rx) = mpsc::channel(1);
         let query = Query::IndexFromScan(query.clone(), tx);
         self.request(query, rx).await

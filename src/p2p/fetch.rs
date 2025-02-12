@@ -72,7 +72,7 @@ pub async fn spawn_fetch_timer<D: DatabaseClient>(
         }
 
         for (fp, gossip) in &mut stats {
-            let query = sync::Query {
+            let query = sync::TreeQuery {
                 fp: fp.clone(),
                 hash_algo: "sha256".to_string(),
                 prefix: None,

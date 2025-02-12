@@ -69,6 +69,27 @@ pub enum PeerAddr {
     Onion((String, u16)),
 }
 
+impl PeerAddr {
+    pub fn xor_distance(&self, other: &PeerAddr) -> Option<u128> {
+        match (self, other) {
+            (PeerAddr::Inet(SocketAddr::V4(value)), PeerAddr::Inet(SocketAddr::V4(other))) => {
+                let value = u32::from_be_bytes(value.ip().octets());
+                let other = u32::from_be_bytes(other.ip().octets());
+                let distance = (value ^ other) as u128;
+                Some(distance << 96)
+            }
+            (PeerAddr::Inet(SocketAddr::V6(value)), PeerAddr::Inet(SocketAddr::V6(other))) => {
+                let value = value.ip().to_bits();
+                let other = other.ip().to_bits();
+                Some(value ^ other)
+            }
+            // key distance doesn't make sense here
+            (PeerAddr::Onion(_), PeerAddr::Onion(_)) => Some(1),
+            _ => None,
+        }
+    }
+}
+
 impl FromStr for PeerAddr {
     type Err = Error;
 
@@ -162,5 +183,77 @@ mod tests {
             }
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_ipv4_xor_distance() {
+        let base = "192.168.1.2:16169".parse::<PeerAddr>().unwrap();
+        assert_eq!(
+            base.xor_distance(&"192.168.1.2:16169".parse::<PeerAddr>().unwrap()),
+            Some(0)
+        );
+        assert_eq!(
+            base.xor_distance(&"192.168.1.2:443".parse::<PeerAddr>().unwrap()),
+            Some(0)
+        );
+        assert_eq!(
+            base.xor_distance(&"192.168.1.1:16169".parse::<PeerAddr>().unwrap()),
+            Some(3 << 96)
+        );
+        assert_eq!(
+            base.xor_distance(&"192.168.1.3:16169".parse::<PeerAddr>().unwrap()),
+            Some(1 << 96)
+        );
+        assert_eq!(
+            base.xor_distance(&"192.168.2.0:16169".parse::<PeerAddr>().unwrap()),
+            Some(770 << 96)
+        );
+        assert_eq!(
+            base.xor_distance(&"1.0.0.1:16169".parse::<PeerAddr>().unwrap()),
+            Some(3_249_012_995 << 96)
+        );
+        assert_eq!(
+            base.xor_distance(&"255.255.255.255:16169".parse::<PeerAddr>().unwrap()),
+            Some(1_062_731_517 << 96)
+        );
+        assert_eq!(
+            base.xor_distance(
+                &"[2001:db8:3333:4444:5555:6666:7777:8888]:16169"
+                    .parse::<PeerAddr>()
+                    .unwrap()
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn test_ipv6_xor_distance() {
+        let base = "[2001:db8:3333:4444:5555:6666:7777:8888]:16169"
+            .parse::<PeerAddr>()
+            .unwrap();
+        assert_eq!(
+            base.xor_distance(
+                &"[2001:db8:3333:4444:5555:6666:7777:8888]:16169"
+                    .parse::<PeerAddr>()
+                    .unwrap()
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            base.xor_distance(
+                &"[2001:db8:3333:4444:5555:6666:7777:8888]:443"
+                    .parse::<PeerAddr>()
+                    .unwrap()
+            ),
+            Some(0)
+        );
+        assert_eq!(
+            base.xor_distance(&"[2001:db8::]:16169".parse::<PeerAddr>().unwrap()),
+            Some(15_845_713_099_137_310_197_519_190_152)
+        );
+        assert_eq!(
+            base.xor_distance(&"[fe80::1a2b:3c4d:5e6f]:16169".parse::<PeerAddr>().unwrap()),
+            Some(295_758_699_624_154_779_744_216_564_213_718_111_975)
+        );
     }
 }
