@@ -23,10 +23,7 @@ pub async fn resolve(dns: &str) -> Result<impl Iterator<Item = SocketAddr>> {
     Ok(stream)
 }
 
-pub async fn spawn_dns(
-    dns: Vec<String>,
-    peering_tx: mpsc::Sender<SyncRequest>,
-) -> Result<Infallible> {
+pub async fn spawn(dns: Vec<String>, peering_tx: mpsc::Sender<SyncRequest>) -> Result<Infallible> {
     // briefly delay this in case we error out for some reason
     tokio::time::sleep(DNS_DEBOUNCE).await;
 

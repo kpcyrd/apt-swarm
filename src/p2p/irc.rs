@@ -130,7 +130,7 @@ pub async fn connect_irc(
     }
 }
 
-pub async fn spawn_irc(
+pub async fn spawn(
     mut rx: mpsc::Receiver<String>,
     url: String,
     peering_tx: mpsc::Sender<SyncRequest>,

@@ -130,15 +130,11 @@ pub async fn spawn(
 
     #[cfg(feature = "irc")]
     if !p2p.irc.no_irc {
-        set.spawn(irc::spawn_irc(
-            irc_rx,
-            p2p.irc.irc_channel,
-            peering_tx.clone(),
-        ));
+        set.spawn(irc::spawn(irc_rx, p2p.irc.irc_channel, peering_tx.clone()));
     }
 
     if !p2p.dns.no_dns {
-        set.spawn(dns::spawn_dns(p2p.dns.dns, peering_tx));
+        set.spawn(dns::spawn(p2p.dns.dns, peering_tx));
     }
 
     // if irc is not enabled, supress an unused variable warning
