@@ -176,6 +176,9 @@ pub struct P2p {
     /// Do not actively fetch updates from the configured repositories
     #[arg(long)]
     pub no_fetch: bool,
+    #[cfg(feature = "onions")]
+    #[command(flatten)]
+    pub onions: P2pOnions,
     /// Do not bind a sync port for p2p traffic
     #[arg(long)]
     pub no_bind: bool,
@@ -204,6 +207,24 @@ pub struct P2pIrc {
     pub irc_channel: String,
 }
 
+#[cfg(feature = "onions")]
+#[derive(Debug, Parser)]
+pub struct P2pOnions {
+    /// Setup a hidden service and support outbound onion connections
+    #[arg(long = "onions")]
+    pub enabled: bool,
+    #[command(flatten)]
+    pub options: OnionOptions,
+}
+
+#[cfg(feature = "onions")]
+#[derive(Debug, Parser)]
+pub struct OnionOptions {
+    /// Disable log scrubbing of e.g. Tor network IPs we're connecting to
+    #[arg(long)]
+    pub onions_log_sensitive_information: bool,
+}
+
 /// Access to low-level features
 #[derive(Debug, Subcommand)]
 pub enum Plumbing {
@@ -223,6 +244,12 @@ pub enum Plumbing {
     DnsBootstrap(DnsBootstrap),
     #[cfg(unix)]
     DbServer(DbServer),
+    #[cfg(feature = "onions")]
+    OnionService(OnionService),
+    #[cfg(feature = "onions")]
+    OnionConnect(OnionConnect),
+    #[cfg(feature = "onions")]
+    ResetArti(ResetArti),
     Migrate(Migrate),
     Fsck(Fsck),
     Completions(Completions),
@@ -330,6 +357,27 @@ pub struct DnsBootstrap {
 /// Bind a unix domain socket and allow abstract database access from multiple processes
 #[derive(Debug, Parser)]
 pub struct DbServer {}
+
+#[cfg(feature = "onions")]
+/// Bind and run hidden service
+#[derive(Debug, Parser)]
+pub struct OnionService {
+    #[command(flatten)]
+    pub options: OnionOptions,
+}
+
+#[cfg(feature = "onions")]
+/// Connect to hidden service
+#[derive(Debug, Parser)]
+pub struct OnionConnect {
+    pub onion: String,
+    pub port: u16,
+}
+
+#[cfg(feature = "onions")]
+/// Delete all data related to the Tor network
+#[derive(Debug, Parser)]
+pub struct ResetArti {}
 
 /// Open a fresh database and re-import the old data
 #[derive(Debug, Parser)]
