@@ -463,8 +463,15 @@ pub async fn run(
         #[cfg(feature = "onions")]
         Plumbing::OnionService(onion) => {
             let config = config?;
+            let db = Database::open_directly(&config, AccessMode::Relaxed).await?;
             let path = config.arti_path()?;
-            p2p::onions::spawn(path, onion.options).await?;
+
+            let (mut db_server, db_client) = DatabaseServer::new(db);
+
+            tokio::select! {
+                _ = db_server.run() => bail!("Database server has terminated"),
+                ret = p2p::onions::spawn(&db_client, path, onion.options) => ret,
+            }?;
         }
         Plumbing::Fsck(fsck) => {
             let config = config?;

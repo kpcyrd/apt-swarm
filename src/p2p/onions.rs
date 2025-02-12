@@ -1,5 +1,8 @@
 use crate::args;
+use crate::db::{DatabaseClient, DatabaseServerClient};
 use crate::errors::*;
+use crate::p2p;
+use crate::sync;
 use arti_client::{
     config::{onion_service::OnionServiceConfigBuilder, TorClientConfigBuilder},
     TorClient,
@@ -7,7 +10,7 @@ use arti_client::{
 use futures::StreamExt;
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
-use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tor_cell::relaycell::msg::Connected;
 use tor_config::ExplicitOrAuto;
 use tor_hsservice::StreamRequest;
@@ -17,7 +20,10 @@ use tor_rtcompat::PreferredRuntime;
 
 const HIDDEN_SERVICE_PORT: u16 = 16169;
 
-async fn handle_tor_client(stream_request: StreamRequest) -> Result<()> {
+async fn handle_tor_client<D: DatabaseClient + Sync + Send>(
+    db: &mut D,
+    stream_request: StreamRequest,
+) -> Result<()> {
     let request = stream_request.request();
     debug!("Received onion stream request: {request:?}");
     match request {
@@ -28,25 +34,18 @@ async fn handle_tor_client(stream_request: StreamRequest) -> Result<()> {
                 .context("Failed to accept hidden service client")?;
             debug!("Accepted tcp client through hidden service");
 
-            // Simple echo server
-            let (read, mut write) = onion_service_stream.split();
-            let reader = BufReader::new(read);
-            let mut lines = reader.lines();
-
-            while let Some(line) = lines
-                .next_line()
-                .await
-                .context("Failed to read next line")?
-            {
-                info!("Received line: {line:?}");
-                write.write_all(line.as_bytes()).await?;
-                write.write_all(b"\n").await?;
-                write.flush().await?;
-            }
+            // Invoke sync service
+            let (rx, mut tx) = onion_service_stream.split();
+            let result =
+                sync::sync_yield(db, None, rx, &mut tx, Some(p2p::SYNC_IDLE_TIMEOUT)).await;
+            tx.shutdown().await.ok();
+            result
         }
-        _ => stream_request.shutdown_circuit()?,
+        _ => {
+            stream_request.shutdown_circuit()?;
+            Ok(())
+        }
     }
-    Ok(())
 }
 
 async fn setup(path: &Path) -> Result<TorClient<PreferredRuntime>> {
@@ -112,7 +111,11 @@ pub async fn connect(path: PathBuf, onion: &str, port: u16) -> Result<()> {
     Ok(())
 }
 
-pub async fn spawn(path: PathBuf, config: args::OnionOptions) -> Result<Infallible> {
+pub async fn spawn(
+    db: &DatabaseServerClient,
+    path: PathBuf,
+    config: args::OnionOptions,
+) -> Result<Infallible> {
     // if requested, acquire a guard that disables log scrubbing for the time it's held
     let _guard: Option<_> = config
         .onions_log_sensitive_information
@@ -140,8 +143,9 @@ pub async fn spawn(path: PathBuf, config: args::OnionOptions) -> Result<Infallib
 
     while let Some(stream_request) = stream_requests.next().await {
         debug!("Received tor client circuit");
+        let mut db = db.clone();
         tokio::spawn(async move {
-            if let Err(err) = handle_tor_client(stream_request).await {
+            if let Err(err) = handle_tor_client(&mut db, stream_request).await {
                 let root_cause = err
                     .downcast_ref::<io::Error>()
                     .and_then(|io_err| io_err.get_ref())
