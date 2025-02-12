@@ -98,7 +98,7 @@ pub async fn connect_irc(
                             match msg.parse::<PeerGossip>() {
                                 Ok(info) => {
                                     info!("Discovered peer: {info:?}");
-                                    let info = SyncRequest::Gossip(info);
+                                    let info = SyncRequest::from(info);
                                     if let Err(TrySendError::Full(info)) = peering_tx.try_send(info) {
                                         warn!("Discarding peer gossip because peering backlog is full: {info:?}");
                                     }

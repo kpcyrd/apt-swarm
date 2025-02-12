@@ -3,9 +3,27 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 
 #[derive(Debug, PartialEq)]
-pub enum SyncRequest {
-    Gossip(PeerGossip),
-    Addr(PeerAddr),
+pub struct SyncRequest {
+    pub hint: Option<SyncHint>,
+    pub addrs: Vec<PeerAddr>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SyncHint {
+    pub fp: sequoia_openpgp::Fingerprint,
+    pub idx: String,
+}
+
+impl From<PeerGossip> for SyncRequest {
+    fn from(gossip: PeerGossip) -> Self {
+        Self {
+            hint: Some(SyncHint {
+                fp: gossip.fp,
+                idx: gossip.idx,
+            }),
+            addrs: gossip.addrs,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

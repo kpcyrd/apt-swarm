@@ -2,7 +2,7 @@ use crate::db::DatabaseClient;
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::p2p;
-use crate::p2p::proto::{PeerAddr, SyncRequest};
+use crate::p2p::proto::PeerAddr;
 use crate::sync;
 use ipnetwork::IpNetwork;
 use sequoia_openpgp::Fingerprint;
@@ -147,20 +147,30 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
     // keep track of connection attempts to avoid flooding
     let mut cooldown = Cooldowns::new();
 
-    while let Some(gossip) = rx.recv().await {
+    while let Some(req) = rx.recv().await {
         // TODO: allow concurrent syncs
 
-        let addrs = match gossip {
-            SyncRequest::Gossip(gossip) => {
-                // TODO: only connect if we're not already in sync
-                gossip.addrs
-            }
-            SyncRequest::Addr(addr) => {
-                vec![addr]
-            }
-        };
+        for addr in req.addrs {
+            // only connect if we're not already in sync
+            if let Some(hint) = &req.hint {
+                let fp = &hint.fp;
+                let (idx, _num) = db
+                    .index_from_scan(&sync::TreeQuery {
+                        fp: fp.clone(),
+                        hash_algo: "sha256".to_string(),
+                        prefix: None,
+                    })
+                    .await?;
 
-        for addr in addrs {
+                if *hint.idx == idx {
+                    debug!(
+                        "We're already in sync with peer: addr={addr:?}, fp={fp:?}, idx={idx:?}"
+                    );
+                    continue;
+                }
+            }
+
+            // prepare connection
             if let PeerAddr::Inet(addr) = &addr {
                 for block in P2P_BLOCK_LIST.iter() {
                     if block.contains(addr.ip()) {

@@ -36,7 +36,10 @@ pub async fn spawn_dns(
                 Ok(addrs) => {
                     for addr in addrs {
                         debug!("Resolved dns name to address: {addr:?}");
-                        let addr = SyncRequest::Addr(PeerAddr::Inet(addr));
+                        let addr = SyncRequest {
+                            hint: None,
+                            addrs: vec![PeerAddr::Inet(addr)],
+                        };
                         if let Err(TrySendError::Full(addr)) = peering_tx.try_send(addr) {
                             warn!("Discarding addr because peering backlog is full: {addr:?}");
                         }
