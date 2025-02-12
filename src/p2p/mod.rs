@@ -130,18 +130,20 @@ pub async fn spawn(
 
     #[cfg(feature = "irc")]
     if !p2p.irc.no_irc {
-        // briefly delay the connection, so we don't spam irc in case something crashes immediately
         set.spawn(irc::spawn_irc(
-            Some(irc::IRC_DEBOUNCE),
             irc_rx,
             p2p.irc.irc_channel,
-            peering_tx,
+            peering_tx.clone(),
         ));
+    }
+
+    if !p2p.dns.no_dns {
+        set.spawn(dns::spawn_dns(p2p.dns.dns, peering_tx));
     }
 
     // if irc is not enabled, supress an unused variable warning
     #[cfg(not(feature = "irc"))]
-    let _ = (peering_tx, irc_rx);
+    let _ = irc_rx;
 
     info!("Successfully started p2p node...");
     let result = set

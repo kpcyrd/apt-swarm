@@ -3,6 +3,12 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 
 #[derive(Debug, PartialEq)]
+pub enum SyncRequest {
+    Gossip(PeerGossip),
+    Addr(PeerAddr),
+}
+
+#[derive(Debug, PartialEq)]
 pub struct PeerGossip {
     pub fp: sequoia_openpgp::Fingerprint,
     pub idx: String,

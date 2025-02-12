@@ -1,6 +1,6 @@
 use crate::errors::*;
 use crate::p2p;
-use crate::p2p::proto::PeerGossip;
+use crate::p2p::proto::{PeerGossip, SyncRequest};
 use futures::prelude::*;
 use irc::client::prelude::{Client, Command, Config, Response};
 use std::convert::Infallible;
@@ -10,7 +10,7 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::time;
 use url::Url;
 
-pub const IRC_DEBOUNCE: Duration = Duration::from_millis(250);
+const IRC_DEBOUNCE: Duration = Duration::from_millis(250);
 pub const IRC_RECONNECT_COOLDOWN: Duration = Duration::from_secs(60); // 1min
 pub const IRC_RECONNECT_JITTER: Duration = Duration::from_secs(60 * 3); // 3min
 
@@ -56,7 +56,7 @@ fn parse_channel(url: &str) -> Result<(String, String)> {
 pub async fn connect_irc(
     rx: &mut mpsc::Receiver<String>,
     irc: &(String, String),
-    peering_tx: &mpsc::Sender<PeerGossip>,
+    peering_tx: &mpsc::Sender<SyncRequest>,
 ) -> Result<Infallible> {
     let (server, channel) = irc;
     info!("Connecting to irc for peer discovery (server={server:?}, channel={channel:?})...");
@@ -96,10 +96,11 @@ pub async fn connect_irc(
                             }
 
                             match msg.parse::<PeerGossip>() {
-                                Ok(gi) => {
-                                    info!("Discovered peer: {gi:?}");
-                                    if let Err(TrySendError::Full(gi)) = peering_tx.try_send(gi) {
-                                        warn!("Discarding peer gossip because peering backlog is full: {gi:?}");
+                                Ok(info) => {
+                                    info!("Discovered peer: {info:?}");
+                                    let info = SyncRequest::Gossip(info);
+                                    if let Err(TrySendError::Full(info)) = peering_tx.try_send(info) {
+                                        warn!("Discarding peer gossip because peering backlog is full: {info:?}");
                                     }
                                 }
                                 Err(err) => {
@@ -130,14 +131,12 @@ pub async fn connect_irc(
 }
 
 pub async fn spawn_irc(
-    debounce: Option<Duration>,
     mut rx: mpsc::Receiver<String>,
     url: String,
-    peering_tx: mpsc::Sender<PeerGossip>,
+    peering_tx: mpsc::Sender<SyncRequest>,
 ) -> Result<Infallible> {
-    if let Some(debounce) = debounce {
-        tokio::time::sleep(debounce).await;
-    }
+    // briefly delay the connection, so we don't spam irc in case something crashes immediately
+    tokio::time::sleep(IRC_DEBOUNCE).await;
 
     let irc = parse_channel(&url)?;
     loop {

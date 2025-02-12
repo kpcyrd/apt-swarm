@@ -173,6 +173,8 @@ pub struct P2p {
     #[cfg(feature = "irc")]
     #[command(flatten)]
     pub irc: P2pIrc,
+    #[command(flatten)]
+    pub dns: P2pDns,
     /// Do not actively fetch updates from the configured repositories
     #[arg(long)]
     pub no_fetch: bool,
@@ -202,6 +204,16 @@ pub struct P2pIrc {
     /// The irc server and channel to connect to
     #[arg(long, default_value = "ircs://irc.hackint.org/##apt-swarm-p2p")]
     pub irc_channel: String,
+}
+
+#[derive(Debug, Parser)]
+pub struct P2pDns {
+    /// Do not query dnsseeds
+    #[arg(long)]
+    pub no_dns: bool,
+    /// The dns names to query for bootstrapping
+    #[arg(long, default_values = p2p::dns::DNS_SEEDS)]
+    pub dns: Vec<String>,
 }
 
 /// Access to low-level features

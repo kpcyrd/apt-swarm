@@ -2,7 +2,7 @@ use crate::db::DatabaseClient;
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::p2p;
-use crate::p2p::proto::PeerAddr;
+use crate::p2p::proto::{PeerAddr, SyncRequest};
 use crate::sync;
 use ipnetwork::IpNetwork;
 use sequoia_openpgp::Fingerprint;
@@ -142,16 +142,25 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: Keyring,
     proxy: Option<SocketAddr>,
-    mut rx: mpsc::Receiver<p2p::proto::PeerGossip>,
+    mut rx: mpsc::Receiver<p2p::proto::SyncRequest>,
 ) -> Result<Infallible> {
     // keep track of connection attempts to avoid flooding
     let mut cooldown = Cooldowns::new();
 
     while let Some(gossip) = rx.recv().await {
-        // TODO: only connect if we're not already in sync
         // TODO: allow concurrent syncs
 
-        for addr in &gossip.addrs {
+        let addrs = match gossip {
+            SyncRequest::Gossip(gossip) => {
+                // TODO: only connect if we're not already in sync
+                gossip.addrs
+            }
+            SyncRequest::Addr(addr) => {
+                vec![addr]
+            }
+        };
+
+        for addr in addrs {
             if let PeerAddr::Inet(addr) = &addr {
                 for block in P2P_BLOCK_LIST.iter() {
                     if block.contains(addr.ip()) {
@@ -167,7 +176,7 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
                 }
             }
 
-            if !cooldown.can_approach(addr) {
+            if !cooldown.can_approach(&addr) {
                 debug!("Address is still in cooldown, skipping for now: {addr:?}");
                 continue;
             }
@@ -175,16 +184,16 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
             p2p::random_jitter(p2p::P2P_SYNC_CONNECT_JITTER).await;
 
             info!("Syncing from remote peer: {addr:?}");
-            let ret = pull_from_peer(db, &keyring, &[], addr, proxy).await;
+            let ret = pull_from_peer(db, &keyring, &[], &addr, proxy).await;
             debug!("Connection to {addr:?} has been closed");
             match ret {
                 Ok(_) => {
-                    cooldown.mark_ok(addr.clone());
+                    cooldown.mark_ok(addr);
                     break;
                 }
                 Err(err) => {
                     warn!("Error while syncing from peer {addr:?}: {err:#}");
-                    cooldown.mark_bad(addr.clone());
+                    cooldown.mark_bad(addr);
                 }
             }
         }
