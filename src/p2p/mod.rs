@@ -53,7 +53,7 @@ pub async fn spawn(
 ) -> Result<Infallible> {
     let mut set = JoinSet::new();
 
-    let (mut db_server, mut db_client) = DatabaseServer::new(db);
+    let (mut db_server, db_client) = DatabaseServer::new(db);
     set.spawn(async move {
         db_server.run().await?;
         bail!("Database server has terminated");
@@ -128,8 +128,12 @@ pub async fn spawn(
         set.spawn(update_check::spawn_update_check(image, commit));
     }
 
-    let (peering_tx, peering_rx) = mpsc::channel(1024);
-    set.spawn(async move { peering::spawn(&mut db_client, keyring, proxy, peering_rx).await });
+    let peering_tx = {
+        let mut db_client = db_client.clone();
+        let (peering_tx, peering_rx) = mpsc::channel(1024);
+        set.spawn(async move { peering::spawn(&mut db_client, keyring, proxy, peering_rx).await });
+        peering_tx
+    };
 
     #[cfg(feature = "irc")]
     if !p2p.irc.no_irc {
@@ -149,7 +153,7 @@ pub async fn spawn(
     #[cfg(feature = "onions")]
     if p2p.onions.enabled {
         let path = config.arti_path()?;
-        set.spawn(onions::spawn(path, p2p.onions.options));
+        set.spawn(async move { onions::spawn(&db_client, path, p2p.onions.options).await });
     }
 
     info!("Successfully started p2p node...");
