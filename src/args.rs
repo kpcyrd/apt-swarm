@@ -236,6 +236,8 @@ pub enum Plumbing {
     Index(Index),
     Migrate(Migrate),
     Paths(Paths),
+    PeerdbAdd(PeerdbAdd),
+    PeerdbList(PeerdbList),
     SyncPull(SyncPull),
     SyncYield(SyncYield),
 }
@@ -353,6 +355,16 @@ pub struct Migrate {}
 /// Print configured paths
 #[derive(Debug, Parser)]
 pub struct Paths {}
+
+/// Add a peerdb entry
+#[derive(Debug, Parser)]
+pub struct PeerdbAdd {
+    pub addrs: Vec<PeerAddr>,
+}
+
+/// Read and print peerdb file
+#[derive(Debug, Parser)]
+pub struct PeerdbList {}
 
 /// Fetch all available signatures over stdio (use with sync-yield)
 #[derive(Debug, Parser)]

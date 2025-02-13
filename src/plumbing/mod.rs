@@ -268,6 +268,26 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                 ret = p2p::db::spawn_unix_db_server(&db_client, db_socket_path) => ret,
             }?;
         }
+        Plumbing::PeerdbAdd(add) => {
+            let config = config?;
+            let mut db = p2p::peerdb::PeerDb::read(&config).await?;
+            for peer in add.addrs {
+                let (_entry, new) = db.add_peer(peer.clone());
+                if new {
+                    info!("Added new peer to peerdb: {peer:?}");
+                } else {
+                    debug!("Peer already in peerdb: {peer:?}");
+                }
+            }
+            db.write(&config).await?;
+        }
+        Plumbing::PeerdbList(_list) => {
+            let config = config?;
+            let db = p2p::peerdb::PeerDb::read(&config).await?;
+            for peer in db.peers {
+                println!("peer={peer:?}");
+            }
+        }
         Plumbing::Migrate(_migrate) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;

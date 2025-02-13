@@ -4,6 +4,7 @@ pub mod dns;
 pub mod fetch;
 #[cfg(feature = "irc")]
 pub mod irc;
+pub mod peerdb;
 pub mod peering;
 pub mod proto;
 pub mod sync;

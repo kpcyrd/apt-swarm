@@ -1,4 +1,5 @@
 use crate::errors::*;
+use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::str::FromStr;
 
@@ -87,7 +88,7 @@ impl FromStr for PeerGossip {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PeerAddr {
     Inet(SocketAddr),
     Onion((String, u16)),
@@ -141,6 +142,33 @@ impl FromStr for PeerAddr {
                 Ok(PeerAddr::Inet(SocketAddr::new(host, port)))
             }
         }
+    }
+}
+
+impl Serialize for PeerAddr {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            PeerAddr::Inet(addr) => {
+                let addr = addr.to_string();
+                addr.serialize(serializer)
+            }
+            PeerAddr::Onion(addr) => addr.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PeerAddr {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value: String = Deserialize::deserialize(deserializer)?;
+        value
+            .parse()
+            .map_err(|err| serde::de::Error::custom(format!("{err:#}")))
     }
 }
 
@@ -279,5 +307,18 @@ mod tests {
             base.xor_distance(&"[fe80::1a2b:3c4d:5e6f]:16169".parse::<PeerAddr>().unwrap()),
             Some(295_758_699_624_154_779_744_216_564_213_718_111_975)
         );
+    }
+
+    #[test]
+    fn test_peer_addr_serialize() {
+        let addr =
+            serde_json::to_string(&PeerAddr::Inet("[2001:db8::]:16169".parse().unwrap())).unwrap();
+        assert_eq!(addr, "\"[2001:db8::]:16169\"");
+    }
+
+    #[test]
+    fn test_peer_addr_deserialize() {
+        let addr = serde_json::from_str::<PeerAddr>("\"[2001:db8::]:16169\"").unwrap();
+        assert_eq!(addr, PeerAddr::Inet("[2001:db8::]:16169".parse().unwrap()));
     }
 }
