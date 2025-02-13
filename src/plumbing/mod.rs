@@ -2,7 +2,7 @@
 pub mod git;
 pub mod update;
 
-use crate::args::{self, FileOrStdin, Plumbing};
+use crate::args::{FileOrStdin, Plumbing};
 use crate::config::Config;
 #[cfg(unix)]
 use crate::db::channel::DatabaseServer;
@@ -373,9 +373,7 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                 bail!("Fsck failed ({} errors occured)", errors.len());
             }
         }
-        Plumbing::Completions(completions) => {
-            args::gen_completions(&completions)?;
-        }
+        Plumbing::Completions(completions) => completions.generate()?,
     }
 
     Ok(())
