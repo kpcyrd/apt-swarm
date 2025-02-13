@@ -26,6 +26,8 @@ async-stream = "0.3.6"
 async-trait = "0.1.64"
 bstr = { version = "1.2.0", features = ["serde"] }
 bytes = "1.4.0"
+# we don't use bzip2 directly, but enable the libbz2-rs-sys feature
+bzip2 = { version = "0.5.1", features = ["libbz2-rs-sys"] }
 clap = { version = "4.0.32", features = ["derive", "env"] }
 clap_complete = "4.0.7"
 colored = "3"
