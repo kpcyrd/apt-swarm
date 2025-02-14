@@ -1,16 +1,45 @@
 use crate::config::Config;
 use crate::errors::*;
 use crate::p2p::proto::PeerAddr;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tokio::fs;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct PeerStats {}
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Metric {
+    pub last_attempt: Option<DateTime<Utc>>,
+    pub errors_since: usize,
+    pub last_success: Option<DateTime<Utc>>,
+}
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+impl Metric {
+    pub fn successful(&mut self) {
+        self.errors_since = 0;
+        let now = Utc::now();
+        self.last_success = Some(now);
+        self.last_attempt = Some(now);
+    }
+
+    pub fn error(&mut self) {
+        self.errors_since += 1;
+        self.last_attempt = Some(Utc::now());
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct PeerStats {
+    #[serde(default)]
+    pub connect: Metric,
+    #[serde(default)]
+    pub handshake: Metric,
+    #[serde(default)]
+    pub sync: Metric,
+}
+
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 struct Data {
     pub peers: BTreeMap<PeerAddr, PeerStats>,
 }
@@ -89,5 +118,26 @@ impl PeerDb {
             .with_context(|| anyhow!("Failed to rename peerdb {new_path:?} to {path:?}"))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_basic_db() {
+        let data = r#"
+        {"peers":{"[2001:db8::]:16169":{}}}
+        "#;
+        let data = serde_json::from_str::<Data>(data).unwrap();
+        assert_eq!(
+            data,
+            Data {
+                peers: [("[2001:db8::]:16169".parse().unwrap(), PeerStats::default())]
+                    .into_iter()
+                    .collect(),
+            }
+        );
     }
 }

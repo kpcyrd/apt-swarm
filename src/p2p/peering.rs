@@ -52,17 +52,45 @@ pub const COOLDOWN_HOST_THRESHOLD: usize = 10;
 pub async fn pull_from_peer<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: &Keyring,
+    peerdb: &mut PeerDb,
     fingerprints: &[Fingerprint],
     addr: &PeerAddr,
     proxy: Option<SocketAddr>,
 ) -> Result<()> {
-    let mut sock = net::connect(addr, proxy).await?;
+    let (peer, _new) = peerdb.add_peer(addr.clone());
+
+    // setup connection
+    let mut sock = match net::connect(addr, proxy).await {
+        Ok(sock) => {
+            peer.connect.successful();
+            sock
+        }
+        Err(err) => {
+            peer.connect.error();
+            return Err(err);
+        }
+    };
     let (mut rx, mut tx) = sock.split();
 
-    net::handshake(&mut rx, &mut tx).await?;
+    // perform handshake
+    match net::handshake(&mut rx, &mut tx).await {
+        Ok(_) => {
+            peer.handshake.successful();
+        }
+        Err(err) => {
+            peer.handshake.error();
+            tx.shutdown().await.ok();
+            return Err(err);
+        }
+    }
+    peerdb.write().await?;
+
+    // sync from peer
     let result = sync::sync_pull(db, keyring, fingerprints, false, &mut tx, rx).await;
 
+    // shutdown connection
     tx.shutdown().await.ok();
+    // peer.sync.successful();
     result
 }
 
@@ -232,7 +260,7 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
             p2p::random_jitter(P2P_SYNC_CONNECT_JITTER).await;
 
             info!("Syncing from remote peer: {addr:?}");
-            let ret = pull_from_peer(db, &keyring, &[], &addr, proxy).await;
+            let ret = pull_from_peer(db, &keyring, &mut peerdb, &[], &addr, proxy).await;
             debug!("Connection to {addr:?} has been closed");
             match ret {
                 Ok(_) => {
@@ -244,6 +272,7 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
                     cooldown.mark_bad(addr);
                 }
             }
+            peerdb.write().await?;
         }
     }
 

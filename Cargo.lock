@@ -172,6 +172,7 @@ dependencies = [
  "bstr",
  "bytes",
  "bzip2",
+ "chrono",
  "clap",
  "clap_complete",
  "colored",
@@ -497,6 +498,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "serde",
  "wasm-bindgen",
  "windows-targets",
 ]
