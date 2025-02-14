@@ -4,6 +4,7 @@ use apt_swarm::db::{AccessMode, Database, DatabaseClient};
 use apt_swarm::errors::*;
 use apt_swarm::fetch;
 use apt_swarm::keyring::Keyring;
+use apt_swarm::net;
 use apt_swarm::p2p;
 use apt_swarm::plumbing;
 use apt_swarm::signed::Signed;
@@ -186,7 +187,7 @@ async fn main() -> Result<()> {
             let keyring = Keyring::load(&config)?;
             let mut db = Database::open(&config, AccessMode::Exclusive).await?;
 
-            let mut sock = sync::connect(&pull.addr, args.proxy).await?;
+            let mut sock = net::connect(&pull.addr, args.proxy).await?;
             let (rx, mut tx) = sock.split();
 
             let result =

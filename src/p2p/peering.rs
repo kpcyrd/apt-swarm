@@ -1,6 +1,7 @@
 use crate::db::DatabaseClient;
 use crate::errors::*;
 use crate::keyring::Keyring;
+use crate::net;
 use crate::p2p;
 use crate::p2p::peerdb::PeerDb;
 use crate::p2p::proto::{PeerAddr, SyncRequest};
@@ -55,9 +56,10 @@ pub async fn pull_from_peer<D: DatabaseClient + Sync + Send>(
     addr: &PeerAddr,
     proxy: Option<SocketAddr>,
 ) -> Result<()> {
-    let mut sock = sync::connect(addr, proxy).await?;
-    let (rx, mut tx) = sock.split();
+    let mut sock = net::connect(addr, proxy).await?;
+    let (mut rx, mut tx) = sock.split();
 
+    net::handshake(&mut rx, &mut tx).await?;
     let result = sync::sync_pull(db, keyring, fingerprints, false, &mut tx, rx).await;
 
     tx.shutdown().await.ok();
