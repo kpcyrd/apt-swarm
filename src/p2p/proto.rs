@@ -1,7 +1,7 @@
 use crate::errors::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
 #[derive(Debug, PartialEq)]
@@ -96,22 +96,25 @@ pub enum PeerAddr {
 }
 
 impl PeerAddr {
-    pub fn xor_distance(&self, other: &PeerAddr) -> Option<u128> {
+    fn inet_to_u128(addr: IpAddr) -> u128 {
+        match addr {
+            // IPv4 has most significant bit set to 0
+            IpAddr::V4(ip) => (ip.to_bits() as u128) << 95,
+            // IPv6 has most significant bit set to 1
+            IpAddr::V6(ip) => (ip.to_bits() >> 1) | (1 << 127),
+        }
+    }
+
+    pub fn xor_distance(&self, other: &PeerAddr) -> u128 {
         match (self, other) {
-            (PeerAddr::Inet(SocketAddr::V4(value)), PeerAddr::Inet(SocketAddr::V4(other))) => {
-                let value = u32::from_be_bytes(value.ip().octets());
-                let other = u32::from_be_bytes(other.ip().octets());
-                let distance = (value ^ other) as u128;
-                Some(distance << 96)
-            }
-            (PeerAddr::Inet(SocketAddr::V6(value)), PeerAddr::Inet(SocketAddr::V6(other))) => {
-                let value = value.ip().to_bits();
-                let other = other.ip().to_bits();
-                Some(value ^ other)
+            (PeerAddr::Inet(value), PeerAddr::Inet(other)) => {
+                let value = Self::inet_to_u128(value.ip());
+                let other = Self::inet_to_u128(other.ip());
+                value ^ other
             }
             // key distance doesn't make sense here
-            (PeerAddr::Onion(_), PeerAddr::Onion(_)) => Some(1),
-            _ => None,
+            (PeerAddr::Onion(_), PeerAddr::Onion(_)) => 1,
+            _ => u128::MAX,
         }
     }
 }
@@ -252,31 +255,31 @@ mod tests {
         let base = "192.168.1.2:16169".parse::<PeerAddr>().unwrap();
         assert_eq!(
             base.xor_distance(&"192.168.1.2:16169".parse::<PeerAddr>().unwrap()),
-            Some(0)
+            0
         );
         assert_eq!(
             base.xor_distance(&"192.168.1.2:443".parse::<PeerAddr>().unwrap()),
-            Some(0)
+            0
         );
         assert_eq!(
             base.xor_distance(&"192.168.1.1:16169".parse::<PeerAddr>().unwrap()),
-            Some(3 << 96)
+            3 << 95
         );
         assert_eq!(
             base.xor_distance(&"192.168.1.3:16169".parse::<PeerAddr>().unwrap()),
-            Some(1 << 96)
+            1 << 95
         );
         assert_eq!(
             base.xor_distance(&"192.168.2.0:16169".parse::<PeerAddr>().unwrap()),
-            Some(770 << 96)
+            770 << 95
         );
         assert_eq!(
             base.xor_distance(&"1.0.0.1:16169".parse::<PeerAddr>().unwrap()),
-            Some(3_249_012_995 << 96)
+            3_249_012_995 << 95
         );
         assert_eq!(
             base.xor_distance(&"255.255.255.255:16169".parse::<PeerAddr>().unwrap()),
-            Some(1_062_731_517 << 96)
+            1_062_731_517 << 95
         );
         assert_eq!(
             base.xor_distance(
@@ -284,7 +287,7 @@ mod tests {
                     .parse::<PeerAddr>()
                     .unwrap()
             ),
-            None
+            319_453_597_143_525_594_717_699_116_388_956_488_772,
         );
     }
 
@@ -299,7 +302,7 @@ mod tests {
                     .parse::<PeerAddr>()
                     .unwrap()
             ),
-            Some(0)
+            0
         );
         assert_eq!(
             base.xor_distance(
@@ -307,15 +310,19 @@ mod tests {
                     .parse::<PeerAddr>()
                     .unwrap()
             ),
-            Some(0)
+            0
         );
         assert_eq!(
             base.xor_distance(&"[2001:db8::]:16169".parse::<PeerAddr>().unwrap()),
-            Some(15_845_713_099_137_310_197_519_190_152)
+            7_922_856_549_568_655_098_759_595_076
         );
         assert_eq!(
             base.xor_distance(&"[fe80::1a2b:3c4d:5e6f]:16169".parse::<PeerAddr>().unwrap()),
-            Some(295_758_699_624_154_779_744_216_564_213_718_111_975)
+            147_879_349_812_077_389_872_108_282_106_859_055_987
+        );
+        assert_eq!(
+            base.xor_distance(&"192.168.1.3:16169".parse::<PeerAddr>().unwrap()),
+            319_453_597_183_139_675_974_831_285_185_728_463_940
         );
     }
 
