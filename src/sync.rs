@@ -17,9 +17,6 @@ use tokio::io;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::time;
 
-pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-pub const PROXY_TIMEOUT: Duration = Duration::from_secs(30);
-
 pub const MAX_LINE_LENGTH: u64 = 512;
 
 pub const SYNC_INDEX_TIMEOUT: Duration = Duration::from_secs(120);

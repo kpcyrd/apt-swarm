@@ -11,8 +11,6 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 pub const PROXY_TIMEOUT: Duration = Duration::from_secs(30);
 
-pub const MAX_LINE_LENGTH: u64 = 512;
-
 pub async fn connect(addr: &PeerAddr, proxy: Option<SocketAddr>) -> Result<TcpStream> {
     let PeerAddr::Inet(addr) = addr else {
         bail!("Connecting to onions is not yet implemented")
