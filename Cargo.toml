@@ -1,7 +1,7 @@
 [package]
 name = "apt-swarm"
 version = "0.3.0"
-description = "🥸 p2p gossip network for update transparency, based on pgp 🥸"
+description = "🥸 Experimental p2p gossip network for OpenPGP signature transparency 🥸"
 authors = ["kpcyrd <git@rxv.cc>"]
 license = "GPL-3.0-or-later"
 repository = "https://github.com/kpcyrd/apt-swarm"
