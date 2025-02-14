@@ -175,6 +175,9 @@ pub struct P2p {
     pub irc: P2pIrc,
     #[command(flatten)]
     pub dns: P2pDns,
+    /// Do not use any bootstrapping mechanism, initial peers need to be added manually
+    #[arg(long)]
+    pub no_bootstrap: bool,
     /// Do not actively fetch updates from the configured repositories
     #[arg(long)]
     pub no_fetch: bool,
@@ -208,7 +211,7 @@ pub struct P2pIrc {
 
 #[derive(Debug, Parser)]
 pub struct P2pDns {
-    /// Do not query dnsseeds
+    /// Do not query any configured dnsseeds
     #[arg(long)]
     pub no_dns: bool,
     /// The dns names to query for bootstrapping
