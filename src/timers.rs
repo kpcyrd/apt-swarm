@@ -35,26 +35,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_eased_interval() {
-        let mut interval = EasedInterval::new(Duration::from_millis(20), Duration::from_millis(10));
+        let mut interval =
+            EasedInterval::new(Duration::from_millis(100), Duration::from_millis(50));
         tokio::select! {
             _ = interval.tick() => panic!("interval is not expected to tick yet"),
-            _ = time::sleep(Duration::from_millis(10)) => (),
+            _ = time::sleep(Duration::from_millis(50)) => (),
         };
         tokio::select! {
             _ = interval.tick() => (),
-            _ = time::sleep(Duration::from_millis(15)) => panic!("interval was expected to tick"),
+            _ = time::sleep(Duration::from_millis(75)) => panic!("interval was expected to tick"),
         };
         tokio::select! {
             _ = interval.tick() => panic!("interval is not expected to tick yet"),
-            _ = time::sleep(Duration::from_millis(7)) => (),
+            _ = time::sleep(Duration::from_millis(35)) => (),
         };
         tokio::select! {
             _ = interval.tick() => (),
-            _ = time::sleep(Duration::from_millis(5)) => panic!("interval was expected to tick"),
+            _ = time::sleep(Duration::from_millis(25)) => panic!("interval was expected to tick"),
         };
         tokio::select! {
             _ = interval.tick() => (),
-            _ = time::sleep(Duration::from_millis(12)) => panic!("interval was expected to tick"),
+            _ = time::sleep(Duration::from_millis(60)) => panic!("interval was expected to tick"),
         };
     }
 }
