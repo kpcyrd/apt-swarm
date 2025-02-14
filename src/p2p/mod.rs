@@ -33,8 +33,6 @@ const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
 const UPDATE_CHECK_DEBOUNCE: Duration = Duration::from_secs(5);
 const UPDATE_SHUTDOWN_DELAY: Duration = Duration::from_secs(60 * 20); // 20min
 
-const P2P_SYNC_CONNECT_JITTER: Duration = Duration::from_secs(3);
-
 const GOSSIP_IDLE_ANNOUNCE_INTERVAL: Duration = Duration::from_secs(3600 * 24); // 1h, set this to 24h later
 const P2P_SYNC_PORT_BACKLOG: u32 = 1024;
 

@@ -33,6 +33,14 @@ impl PeerDb {
         &self.data.peers
     }
 
+    pub fn sample(&self) -> Vec<PeerAddr> {
+        let Some((first, _)) = fastrand::choice(&self.data.peers) else {
+            return Vec::new();
+        };
+        // TODO: make this smarter
+        vec![first.clone()]
+    }
+
     pub async fn read(config: &Config) -> Result<Self> {
         let mut db = Self {
             data: Data::default(),
