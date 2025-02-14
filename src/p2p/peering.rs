@@ -2,6 +2,7 @@ use crate::db::DatabaseClient;
 use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::p2p;
+use crate::p2p::peerdb::PeerDb;
 use crate::p2p::proto::PeerAddr;
 use crate::sync;
 use ipnetwork::IpNetwork;
@@ -141,6 +142,7 @@ impl Default for Cooldowns {
 pub async fn spawn<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: Keyring,
+    mut peerdb: PeerDb,
     proxy: Option<SocketAddr>,
     mut rx: mpsc::Receiver<p2p::proto::SyncRequest>,
 ) -> Result<Infallible> {
@@ -151,6 +153,15 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
         // TODO: allow concurrent syncs
 
         for addr in req.addrs {
+            // TODO: assign things to peerdb object
+            let (_peer, new) = peerdb.add_peer(addr.clone());
+            if new {
+                // if this address is new, write database immediately
+                // otherwise we may lose it before being fully synced
+                // this allows us to resume even if bootstrapping stops working
+                peerdb.write().await?;
+            }
+
             // only connect if we're not already in sync
             if let Some(hint) = &req.hint {
                 let fp = &hint.fp;

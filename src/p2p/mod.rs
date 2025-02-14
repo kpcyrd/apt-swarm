@@ -15,6 +15,7 @@ use crate::config::Config;
 use crate::db::{Database, DatabaseServer};
 use crate::errors::*;
 use crate::keyring::Keyring;
+use crate::p2p::peerdb::PeerDb;
 use socket2::{Domain, Socket, Type};
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -66,6 +67,7 @@ pub async fn spawn(
 
     let (irc_tx, irc_rx) = mpsc::channel(32);
     let irc_tx = cfg!(feature = "irc").then(|| irc_tx);
+    let peerdb = PeerDb::read(&config).await?;
 
     if !p2p.no_bind {
         for addr in p2p.bind {
@@ -127,7 +129,9 @@ pub async fn spawn(
     }
 
     let (peering_tx, peering_rx) = mpsc::channel(1024);
-    set.spawn(async move { peering::spawn(&mut db_client, keyring, proxy, peering_rx).await });
+    set.spawn(
+        async move { peering::spawn(&mut db_client, keyring, peerdb, proxy, peering_rx).await },
+    );
 
     #[cfg(feature = "irc")]
     if !p2p.irc.no_irc {

@@ -279,12 +279,12 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                     debug!("Peer already in peerdb: {peer:?}");
                 }
             }
-            db.write(&config).await?;
+            db.write().await?;
         }
         Plumbing::PeerdbList(_list) => {
             let config = config?;
             let db = p2p::peerdb::PeerDb::read(&config).await?;
-            for peer in db.peers {
+            for peer in db.peers() {
                 println!("peer={peer:?}");
             }
         }
