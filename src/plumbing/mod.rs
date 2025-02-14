@@ -284,8 +284,22 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
         Plumbing::PeerdbList(_list) => {
             let config = config?;
             let db = p2p::peerdb::PeerDb::read(&config).await?;
-            for peer in db.peers() {
-                println!("peer={peer:?}");
+            for (addr, stats) in db.peers() {
+                if quiet == 0 {
+                    println!("{}", addr.to_string().bold());
+                    println!(
+                        "    {} {}",
+                        "connect:  ".green(),
+                        stats.connect.format_stats()
+                    );
+                    println!(
+                        "    {} {}",
+                        "handshake:".green(),
+                        stats.handshake.format_stats()
+                    );
+                } else {
+                    println!("{addr}");
+                }
             }
         }
         Plumbing::Migrate(_migrate) => {

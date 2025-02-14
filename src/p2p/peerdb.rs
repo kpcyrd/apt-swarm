@@ -2,7 +2,9 @@ use crate::config::Config;
 use crate::errors::*;
 use crate::p2p::proto::PeerAddr;
 use chrono::{DateTime, Utc};
+use colored::{Color, Colorize};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -26,6 +28,33 @@ impl Metric {
     pub fn error(&mut self) {
         self.errors_since += 1;
         self.last_attempt = Some(Utc::now());
+    }
+
+    pub fn format_stats(&self) -> String {
+        format!(
+            "last_attempt={:<19}  errors_since={}  last_success={}",
+            Self::format_time_opt(self.last_attempt).yellow(),
+            self.errors_since
+                .to_string()
+                .color(if self.errors_since == 0 {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
+            Self::format_time_opt(self.last_success).yellow(),
+        )
+    }
+
+    fn format_time_opt(time: Option<DateTime<Utc>>) -> Cow<'static, str> {
+        if let Some(time) = time {
+            Cow::Owned(Self::format_time(time))
+        } else {
+            Cow::Borrowed("-")
+        }
+    }
+
+    fn format_time(time: DateTime<Utc>) -> String {
+        time.format("%FT%T").to_string()
     }
 }
 

@@ -131,6 +131,18 @@ impl fmt::Debug for PeerAddr {
     }
 }
 
+impl fmt::Display for PeerAddr {
+    fn fmt(&self, w: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PeerAddr::Inet(addr) => fmt::Display::fmt(addr, w),
+            PeerAddr::Onion((host, port)) => {
+                write!(w, "{host}:{port}")?;
+                Ok(())
+            }
+        }
+    }
+}
+
 impl FromStr for PeerAddr {
     type Err = Error;
 
@@ -149,6 +161,9 @@ impl FromStr for PeerAddr {
 
             if host.ends_with(".onion") {
                 // .onion address
+                if !host.chars().all(|c| c.is_alphanumeric() || c == '.') {
+                    bail!("Onion address contains invalid characters");
+                }
                 Ok(PeerAddr::Onion((host.to_string(), port)))
             } else {
                 // IPv4 address
@@ -171,7 +186,7 @@ impl Serialize for PeerAddr {
                 let addr = addr.to_string();
                 addr.serialize(serializer)
             }
-            PeerAddr::Onion(addr) => addr.serialize(serializer),
+            PeerAddr::Onion((host, port)) => format!("{host}:{port}").serialize(serializer),
         }
     }
 }
@@ -334,12 +349,34 @@ mod tests {
         let addr =
             serde_json::to_string(&PeerAddr::Inet("[2001:db8::]:16169".parse().unwrap())).unwrap();
         assert_eq!(addr, "\"[2001:db8::]:16169\"");
+
+        let addr = serde_json::to_string(&PeerAddr::Onion((
+            "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion".to_string(),
+            16169,
+        )))
+        .unwrap();
+        assert_eq!(
+            addr,
+            "\"3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169\""
+        );
     }
 
     #[test]
     fn test_peer_addr_deserialize() {
         let addr = serde_json::from_str::<PeerAddr>("\"[2001:db8::]:16169\"").unwrap();
         assert_eq!(addr, PeerAddr::Inet("[2001:db8::]:16169".parse().unwrap()));
+
+        let addr = serde_json::from_str::<PeerAddr>(
+            "\"3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169\"",
+        )
+        .unwrap();
+        assert_eq!(
+            addr,
+            PeerAddr::Onion((
+                "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion".to_string(),
+                16169
+            ))
+        );
     }
 
     #[test]
@@ -358,5 +395,11 @@ mod tests {
             format!("{addr:?}"),
             "\"3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169\""
         );
+    }
+
+    #[test]
+    fn test_detect_invalid_onion_address() {
+        let addr = "3wisi2b\nfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169";
+        assert!(addr.parse::<PeerAddr>().is_err());
     }
 }
