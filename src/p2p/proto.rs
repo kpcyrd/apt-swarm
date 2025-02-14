@@ -123,7 +123,10 @@ impl fmt::Debug for PeerAddr {
     fn fmt(&self, w: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PeerAddr::Inet(addr) => fmt::Debug::fmt(addr, w),
-            PeerAddr::Onion((host, port)) => fmt::Debug::fmt(&format!("{host}:{port}"), w),
+            PeerAddr::Onion((host, port)) => {
+                write!(w, "\"{}:{}\"", host.escape_debug(), port)?;
+                Ok(())
+            }
         }
     }
 }
