@@ -180,16 +180,13 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
 
         // TODO: allow concurrent syncs
 
-        for addr in req.addrs {
-            // TODO: assign things to peerdb object
-            let (_peer, new) = peerdb.add_peer(addr.clone());
-            if new {
-                // if this address is new, write database immediately
-                // otherwise we may lose it before being fully synced
-                // this allows us to resume even if bootstrapping stops working
-                peerdb.write().await?;
-            }
+        // register all addresses as known beforehand
+        if peerdb.add_peers(&req.addrs) {
+            peerdb.write().await?;
+        }
 
+        // sync from addresses
+        for addr in req.addrs {
             // only connect if we're not already in sync
             if let Some(hint) = &req.hint {
                 let fp = &hint.fp;

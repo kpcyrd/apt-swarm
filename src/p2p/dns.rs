@@ -31,15 +31,15 @@ pub async fn spawn(dns: Vec<String>, peering_tx: mpsc::Sender<SyncRequest>) -> R
         for name in &dns {
             match resolve(name).await {
                 Ok(addrs) => {
-                    for addr in addrs {
+                    let addrs = addrs.map(PeerAddr::Inet).collect();
+
+                    for addr in &addrs {
                         debug!("Resolved dns name to address: {addr:?}");
-                        let addr = SyncRequest {
-                            hint: None,
-                            addrs: vec![PeerAddr::Inet(addr)],
-                        };
-                        if let Err(TrySendError::Full(addr)) = peering_tx.try_send(addr) {
-                            warn!("Discarding addr because peering backlog is full: {addr:?}");
-                        }
+                    }
+
+                    let addr = SyncRequest { hint: None, addrs };
+                    if let Err(TrySendError::Full(addr)) = peering_tx.try_send(addr) {
+                        warn!("Discarding addr because peering backlog is full: {addr:?}");
                     }
                 }
                 Err(err) => error!("Failed to query dns name {name:?}: {err:#}"),

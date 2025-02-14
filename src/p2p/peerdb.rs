@@ -23,10 +23,20 @@ pub struct PeerDb {
 
 impl PeerDb {
     pub fn add_peer(&mut self, addr: PeerAddr) -> (&mut PeerStats, bool) {
+        trace!("Adding address to peerdb: {addr:?}");
         match self.data.peers.entry(addr) {
             entry @ Entry::Vacant(_) => (entry.or_default(), true),
             entry @ Entry::Occupied(_) => (entry.or_default(), false),
         }
+    }
+
+    pub fn add_peers(&mut self, addrs: &[PeerAddr]) -> bool {
+        let mut any_new = false;
+        for addr in addrs {
+            let (_peer, new) = self.add_peer(addr.clone());
+            any_new |= new;
+        }
+        any_new
     }
 
     pub fn peers(&self) -> &BTreeMap<PeerAddr, PeerStats> {
