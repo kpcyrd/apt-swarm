@@ -2,7 +2,7 @@
 pub mod git;
 pub mod update;
 
-use crate::args::{self, FileOrStdin, Plumbing};
+use crate::args::{FileOrStdin, Plumbing};
 use crate::config::Config;
 #[cfg(unix)]
 use crate::db::channel::DatabaseServer;
@@ -268,6 +268,40 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                 ret = p2p::db::spawn_unix_db_server(&db_client, db_socket_path) => ret,
             }?;
         }
+        Plumbing::PeerdbAdd(add) => {
+            let config = config?;
+            let mut db = p2p::peerdb::PeerDb::read(&config).await?;
+            for peer in add.addrs {
+                let (_entry, new) = db.add_peer(peer.clone());
+                if new {
+                    info!("Added new peer to peerdb: {peer:?}");
+                } else {
+                    debug!("Peer already in peerdb: {peer:?}");
+                }
+            }
+            db.write().await?;
+        }
+        Plumbing::PeerdbList(_list) => {
+            let config = config?;
+            let db = p2p::peerdb::PeerDb::read(&config).await?;
+            for (addr, stats) in db.peers() {
+                if quiet == 0 {
+                    println!("{}", addr.to_string().bold());
+                    println!(
+                        "    {} {}",
+                        "connect:  ".green(),
+                        stats.connect.format_stats()
+                    );
+                    println!(
+                        "    {} {}",
+                        "handshake:".green(),
+                        stats.handshake.format_stats()
+                    );
+                } else {
+                    println!("{addr}");
+                }
+            }
+        }
         Plumbing::Migrate(_migrate) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
@@ -373,9 +407,7 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                 bail!("Fsck failed ({} errors occured)", errors.len());
             }
         }
-        Plumbing::Completions(completions) => {
-            args::gen_completions(&completions)?;
-        }
+        Plumbing::Completions(completions) => completions.generate()?,
     }
 
     Ok(())

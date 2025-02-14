@@ -1,6 +1,32 @@
 use crate::errors::*;
-use std::net::SocketAddr;
+use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
+
+#[derive(Debug, PartialEq)]
+pub struct SyncRequest {
+    pub hint: Option<SyncHint>,
+    pub addrs: Vec<PeerAddr>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct SyncHint {
+    pub fp: sequoia_openpgp::Fingerprint,
+    pub idx: String,
+}
+
+impl From<PeerGossip> for SyncRequest {
+    fn from(gossip: PeerGossip) -> Self {
+        Self {
+            hint: Some(SyncHint {
+                fp: gossip.fp,
+                idx: gossip.idx,
+            }),
+            addrs: gossip.addrs,
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct PeerGossip {
@@ -63,29 +89,56 @@ impl FromStr for PeerGossip {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PeerAddr {
     Inet(SocketAddr),
     Onion((String, u16)),
 }
 
 impl PeerAddr {
-    pub fn xor_distance(&self, other: &PeerAddr) -> Option<u128> {
+    fn inet_to_u128(addr: IpAddr) -> u128 {
+        match addr {
+            // IPv4 has most significant bit set to 0
+            IpAddr::V4(ip) => (ip.to_bits() as u128) << 95,
+            // IPv6 has most significant bit set to 1
+            IpAddr::V6(ip) => (ip.to_bits() >> 1) | (1 << 127),
+        }
+    }
+
+    pub fn xor_distance(&self, other: &PeerAddr) -> u128 {
         match (self, other) {
-            (PeerAddr::Inet(SocketAddr::V4(value)), PeerAddr::Inet(SocketAddr::V4(other))) => {
-                let value = u32::from_be_bytes(value.ip().octets());
-                let other = u32::from_be_bytes(other.ip().octets());
-                let distance = (value ^ other) as u128;
-                Some(distance << 96)
-            }
-            (PeerAddr::Inet(SocketAddr::V6(value)), PeerAddr::Inet(SocketAddr::V6(other))) => {
-                let value = value.ip().to_bits();
-                let other = other.ip().to_bits();
-                Some(value ^ other)
+            (PeerAddr::Inet(value), PeerAddr::Inet(other)) => {
+                let value = Self::inet_to_u128(value.ip());
+                let other = Self::inet_to_u128(other.ip());
+                value ^ other
             }
             // key distance doesn't make sense here
-            (PeerAddr::Onion(_), PeerAddr::Onion(_)) => Some(1),
-            _ => None,
+            (PeerAddr::Onion(_), PeerAddr::Onion(_)) => 1,
+            _ => u128::MAX,
+        }
+    }
+}
+
+impl fmt::Debug for PeerAddr {
+    fn fmt(&self, w: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PeerAddr::Inet(addr) => fmt::Debug::fmt(addr, w),
+            PeerAddr::Onion((host, port)) => {
+                write!(w, "\"{}:{}\"", host.escape_debug(), port)?;
+                Ok(())
+            }
+        }
+    }
+}
+
+impl fmt::Display for PeerAddr {
+    fn fmt(&self, w: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PeerAddr::Inet(addr) => fmt::Display::fmt(addr, w),
+            PeerAddr::Onion((host, port)) => {
+                write!(w, "{host}:{port}")?;
+                Ok(())
+            }
         }
     }
 }
@@ -108,6 +161,9 @@ impl FromStr for PeerAddr {
 
             if host.ends_with(".onion") {
                 // .onion address
+                if !host.chars().all(|c| c.is_alphanumeric() || c == '.') {
+                    bail!("Onion address contains invalid characters");
+                }
                 Ok(PeerAddr::Onion((host.to_string(), port)))
             } else {
                 // IPv4 address
@@ -117,6 +173,33 @@ impl FromStr for PeerAddr {
                 Ok(PeerAddr::Inet(SocketAddr::new(host, port)))
             }
         }
+    }
+}
+
+impl Serialize for PeerAddr {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            PeerAddr::Inet(addr) => {
+                let addr = addr.to_string();
+                addr.serialize(serializer)
+            }
+            PeerAddr::Onion((host, port)) => format!("{host}:{port}").serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for PeerAddr {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value: String = Deserialize::deserialize(deserializer)?;
+        value
+            .parse()
+            .map_err(|err| serde::de::Error::custom(format!("{err:#}")))
     }
 }
 
@@ -190,31 +273,31 @@ mod tests {
         let base = "192.168.1.2:16169".parse::<PeerAddr>().unwrap();
         assert_eq!(
             base.xor_distance(&"192.168.1.2:16169".parse::<PeerAddr>().unwrap()),
-            Some(0)
+            0
         );
         assert_eq!(
             base.xor_distance(&"192.168.1.2:443".parse::<PeerAddr>().unwrap()),
-            Some(0)
+            0
         );
         assert_eq!(
             base.xor_distance(&"192.168.1.1:16169".parse::<PeerAddr>().unwrap()),
-            Some(3 << 96)
+            3 << 95
         );
         assert_eq!(
             base.xor_distance(&"192.168.1.3:16169".parse::<PeerAddr>().unwrap()),
-            Some(1 << 96)
+            1 << 95
         );
         assert_eq!(
             base.xor_distance(&"192.168.2.0:16169".parse::<PeerAddr>().unwrap()),
-            Some(770 << 96)
+            770 << 95
         );
         assert_eq!(
             base.xor_distance(&"1.0.0.1:16169".parse::<PeerAddr>().unwrap()),
-            Some(3_249_012_995 << 96)
+            3_249_012_995 << 95
         );
         assert_eq!(
             base.xor_distance(&"255.255.255.255:16169".parse::<PeerAddr>().unwrap()),
-            Some(1_062_731_517 << 96)
+            1_062_731_517 << 95
         );
         assert_eq!(
             base.xor_distance(
@@ -222,7 +305,7 @@ mod tests {
                     .parse::<PeerAddr>()
                     .unwrap()
             ),
-            None
+            319_453_597_143_525_594_717_699_116_388_956_488_772,
         );
     }
 
@@ -237,7 +320,7 @@ mod tests {
                     .parse::<PeerAddr>()
                     .unwrap()
             ),
-            Some(0)
+            0
         );
         assert_eq!(
             base.xor_distance(
@@ -245,15 +328,78 @@ mod tests {
                     .parse::<PeerAddr>()
                     .unwrap()
             ),
-            Some(0)
+            0
         );
         assert_eq!(
             base.xor_distance(&"[2001:db8::]:16169".parse::<PeerAddr>().unwrap()),
-            Some(15_845_713_099_137_310_197_519_190_152)
+            7_922_856_549_568_655_098_759_595_076
         );
         assert_eq!(
             base.xor_distance(&"[fe80::1a2b:3c4d:5e6f]:16169".parse::<PeerAddr>().unwrap()),
-            Some(295_758_699_624_154_779_744_216_564_213_718_111_975)
+            147_879_349_812_077_389_872_108_282_106_859_055_987
         );
+        assert_eq!(
+            base.xor_distance(&"192.168.1.3:16169".parse::<PeerAddr>().unwrap()),
+            319_453_597_183_139_675_974_831_285_185_728_463_940
+        );
+    }
+
+    #[test]
+    fn test_peer_addr_serialize() {
+        let addr =
+            serde_json::to_string(&PeerAddr::Inet("[2001:db8::]:16169".parse().unwrap())).unwrap();
+        assert_eq!(addr, "\"[2001:db8::]:16169\"");
+
+        let addr = serde_json::to_string(&PeerAddr::Onion((
+            "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion".to_string(),
+            16169,
+        )))
+        .unwrap();
+        assert_eq!(
+            addr,
+            "\"3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169\""
+        );
+    }
+
+    #[test]
+    fn test_peer_addr_deserialize() {
+        let addr = serde_json::from_str::<PeerAddr>("\"[2001:db8::]:16169\"").unwrap();
+        assert_eq!(addr, PeerAddr::Inet("[2001:db8::]:16169".parse().unwrap()));
+
+        let addr = serde_json::from_str::<PeerAddr>(
+            "\"3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169\"",
+        )
+        .unwrap();
+        assert_eq!(
+            addr,
+            PeerAddr::Onion((
+                "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion".to_string(),
+                16169
+            ))
+        );
+    }
+
+    #[test]
+    fn test_peer_addr_debug_inet() {
+        let addr = PeerAddr::Inet("[2001:db8::]:16169".parse().unwrap());
+        assert_eq!(format!("{addr:?}"), "[2001:db8::]:16169");
+    }
+
+    #[test]
+    fn test_peer_addr_debug_onion() {
+        let addr = PeerAddr::Onion((
+            "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion".to_string(),
+            16169,
+        ));
+        assert_eq!(
+            format!("{addr:?}"),
+            "\"3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169\""
+        );
+    }
+
+    #[test]
+    fn test_detect_invalid_onion_address() {
+        let addr = "3wisi2b\nfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169";
+        assert!(addr.parse::<PeerAddr>().is_err());
     }
 }

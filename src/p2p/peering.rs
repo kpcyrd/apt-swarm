@@ -1,9 +1,12 @@
 use crate::db::DatabaseClient;
 use crate::errors::*;
 use crate::keyring::Keyring;
+use crate::net;
 use crate::p2p;
-use crate::p2p::proto::PeerAddr;
+use crate::p2p::peerdb::PeerDb;
+use crate::p2p::proto::{PeerAddr, SyncRequest};
 use crate::sync;
+use crate::timers::EasedInterval;
 use ipnetwork::IpNetwork;
 use sequoia_openpgp::Fingerprint;
 use std::collections::VecDeque;
@@ -31,8 +34,14 @@ pub static P2P_ILLEGAL_PORTS: &[u16] = &[
     6697, 8080,
 ];
 
-// When an ip is in cooldown, this port is still allowed, until the specific port goes into cooldown too
+/// When an ip is in cooldown, this port is still allowed, until the specific port goes into cooldown too
 pub const STANDARD_P2P_PORT: u16 = 16169;
+
+/// How often to connect to one of our known peers
+const P2P_SYNC_CONNECT_INTERVAL: Duration = Duration::from_secs(60 * 10); // 10min
+/// Time until we make our first connection to an already known peer
+const P2P_SYNC_CONNECT_DELAY: Duration = Duration::from_secs(30); // 30sec
+const P2P_SYNC_CONNECT_JITTER: Duration = Duration::from_secs(3);
 
 pub const COOLDOWN_LRU_SIZE: usize = 16_384;
 pub const COOLDOWN_PORT_AFTER_SUCCESS: Duration = Duration::from_secs(60 * 5); // 5min
@@ -43,16 +52,45 @@ pub const COOLDOWN_HOST_THRESHOLD: usize = 10;
 pub async fn pull_from_peer<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: &Keyring,
+    peerdb: &mut PeerDb,
     fingerprints: &[Fingerprint],
     addr: &PeerAddr,
     proxy: Option<SocketAddr>,
 ) -> Result<()> {
-    let mut sock = sync::connect(addr, proxy).await?;
-    let (rx, mut tx) = sock.split();
+    let (peer, _new) = peerdb.add_peer(addr.clone());
 
+    // setup connection
+    let mut sock = match net::connect(addr, proxy).await {
+        Ok(sock) => {
+            peer.connect.successful();
+            sock
+        }
+        Err(err) => {
+            peer.connect.error();
+            return Err(err);
+        }
+    };
+    let (mut rx, mut tx) = sock.split();
+
+    // perform handshake
+    match net::handshake(&mut rx, &mut tx).await {
+        Ok(_) => {
+            peer.handshake.successful();
+        }
+        Err(err) => {
+            peer.handshake.error();
+            tx.shutdown().await.ok();
+            return Err(err);
+        }
+    }
+    peerdb.write().await?;
+
+    // sync from peer
     let result = sync::sync_pull(db, keyring, fingerprints, false, &mut tx, rx).await;
 
+    // shutdown connection
     tx.shutdown().await.ok();
+    // peer.sync.successful();
     result
 }
 
@@ -141,17 +179,64 @@ impl Default for Cooldowns {
 pub async fn spawn<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: Keyring,
+    mut peerdb: PeerDb,
     proxy: Option<SocketAddr>,
-    mut rx: mpsc::Receiver<p2p::proto::PeerGossip>,
+    mut rx: mpsc::Receiver<p2p::proto::SyncRequest>,
 ) -> Result<Infallible> {
     // keep track of connection attempts to avoid flooding
     let mut cooldown = Cooldowns::new();
 
-    while let Some(gossip) = rx.recv().await {
-        // TODO: only connect if we're not already in sync
+    let mut interval = EasedInterval::new(P2P_SYNC_CONNECT_DELAY, P2P_SYNC_CONNECT_INTERVAL);
+    loop {
+        // Wait for request, or automatically connect to known peer
+        let req = tokio::select! {
+            req = rx.recv() => {
+                if let Some(req) = req {
+                    req
+                } else {
+                    break;
+                }
+            }
+            _ = interval.tick() => {
+                // Automatically pick a known peer
+                let addrs = peerdb.sample();
+                debug!("Automatically selected peers for periodic sync: {addrs:?}");
+                SyncRequest {
+                    hint: None,
+                    addrs,
+                }
+            }
+        };
+
         // TODO: allow concurrent syncs
 
-        for addr in &gossip.addrs {
+        // register all addresses as known beforehand
+        if peerdb.add_peers(&req.addrs) {
+            peerdb.write().await?;
+        }
+
+        // sync from addresses
+        for addr in req.addrs {
+            // only connect if we're not already in sync
+            if let Some(hint) = &req.hint {
+                let fp = &hint.fp;
+                let (idx, _num) = db
+                    .index_from_scan(&sync::TreeQuery {
+                        fp: fp.clone(),
+                        hash_algo: "sha256".to_string(),
+                        prefix: None,
+                    })
+                    .await?;
+
+                if *hint.idx == idx {
+                    debug!(
+                        "We're already in sync with peer: addr={addr:?}, fp={fp:?}, idx={idx:?}"
+                    );
+                    continue;
+                }
+            }
+
+            // prepare connection
             if let PeerAddr::Inet(addr) = &addr {
                 for block in P2P_BLOCK_LIST.iter() {
                     if block.contains(addr.ip()) {
@@ -167,26 +252,27 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
                 }
             }
 
-            if !cooldown.can_approach(addr) {
+            if !cooldown.can_approach(&addr) {
                 debug!("Address is still in cooldown, skipping for now: {addr:?}");
                 continue;
             }
 
-            p2p::random_jitter(p2p::P2P_SYNC_CONNECT_JITTER).await;
+            p2p::random_jitter(P2P_SYNC_CONNECT_JITTER).await;
 
             info!("Syncing from remote peer: {addr:?}");
-            let ret = pull_from_peer(db, &keyring, &[], addr, proxy).await;
+            let ret = pull_from_peer(db, &keyring, &mut peerdb, &[], &addr, proxy).await;
             debug!("Connection to {addr:?} has been closed");
             match ret {
                 Ok(_) => {
-                    cooldown.mark_ok(addr.clone());
+                    cooldown.mark_ok(addr);
                     break;
                 }
                 Err(err) => {
                     warn!("Error while syncing from peer {addr:?}: {err:#}");
-                    cooldown.mark_bad(addr.clone());
+                    cooldown.mark_bad(addr);
                 }
             }
+            peerdb.write().await?;
         }
     }
 

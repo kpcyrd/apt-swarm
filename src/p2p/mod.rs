@@ -4,6 +4,7 @@ pub mod dns;
 pub mod fetch;
 #[cfg(feature = "irc")]
 pub mod irc;
+pub mod peerdb;
 pub mod peering;
 pub mod proto;
 pub mod sync;
@@ -14,6 +15,7 @@ use crate::config::Config;
 use crate::db::{Database, DatabaseServer};
 use crate::errors::*;
 use crate::keyring::Keyring;
+use crate::p2p::peerdb::PeerDb;
 use socket2::{Domain, Socket, Type};
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -30,8 +32,6 @@ const SYNC_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(60 * 15); // 15min
 const UPDATE_CHECK_DEBOUNCE: Duration = Duration::from_secs(5);
 const UPDATE_SHUTDOWN_DELAY: Duration = Duration::from_secs(60 * 20); // 20min
-
-const P2P_SYNC_CONNECT_JITTER: Duration = Duration::from_secs(3);
 
 const GOSSIP_IDLE_ANNOUNCE_INTERVAL: Duration = Duration::from_secs(3600 * 24); // 1h, set this to 24h later
 const P2P_SYNC_PORT_BACKLOG: u32 = 1024;
@@ -65,6 +65,7 @@ pub async fn spawn(
 
     let (irc_tx, irc_rx) = mpsc::channel(32);
     let irc_tx = cfg!(feature = "irc").then(|| irc_tx);
+    let peerdb = PeerDb::read(&config).await?;
 
     if !p2p.no_bind {
         for addr in p2p.bind {
@@ -126,22 +127,22 @@ pub async fn spawn(
     }
 
     let (peering_tx, peering_rx) = mpsc::channel(1024);
-    set.spawn(async move { peering::spawn(&mut db_client, keyring, proxy, peering_rx).await });
+    set.spawn(
+        async move { peering::spawn(&mut db_client, keyring, peerdb, proxy, peering_rx).await },
+    );
 
     #[cfg(feature = "irc")]
-    if !p2p.irc.no_irc {
-        // briefly delay the connection, so we don't spam irc in case something crashes immediately
-        set.spawn(irc::spawn_irc(
-            Some(irc::IRC_DEBOUNCE),
-            irc_rx,
-            p2p.irc.irc_channel,
-            peering_tx,
-        ));
+    if !p2p.no_bootstrap && !p2p.irc.no_irc {
+        set.spawn(irc::spawn(irc_rx, p2p.irc.irc_channel, peering_tx.clone()));
+    }
+
+    if !p2p.no_bootstrap && !p2p.dns.no_dns {
+        set.spawn(dns::spawn(p2p.dns.dns, peering_tx));
     }
 
     // if irc is not enabled, supress an unused variable warning
     #[cfg(not(feature = "irc"))]
-    let _ = (peering_tx, irc_rx);
+    let _ = irc_rx;
 
     info!("Successfully started p2p node...");
     let result = set

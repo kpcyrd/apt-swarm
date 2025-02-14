@@ -104,6 +104,18 @@ impl Config {
         let path = config_dir.join("apt-swarm.conf");
         Ok(path)
     }
+
+    pub fn peerdb_path(&self) -> Result<PathBuf> {
+        let data_dir = self.apt_swarm_path()?;
+        let path = data_dir.join("peerdb.json");
+        Ok(path)
+    }
+
+    pub fn peerdb_new_path(&self) -> Result<PathBuf> {
+        let data_dir = self.apt_swarm_path()?;
+        let path = data_dir.join("peerdb.json-");
+        Ok(path)
+    }
 }
 
 #[derive(Debug, PartialEq, Default, Serialize, Deserialize)]

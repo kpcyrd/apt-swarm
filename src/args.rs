@@ -173,6 +173,11 @@ pub struct P2p {
     #[cfg(feature = "irc")]
     #[command(flatten)]
     pub irc: P2pIrc,
+    #[command(flatten)]
+    pub dns: P2pDns,
+    /// Do not use any bootstrapping mechanism, initial peers need to be added manually
+    #[arg(long)]
+    pub no_bootstrap: bool,
     /// Do not actively fetch updates from the configured repositories
     #[arg(long)]
     pub no_fetch: bool,
@@ -204,28 +209,47 @@ pub struct P2pIrc {
     pub irc_channel: String,
 }
 
+#[derive(Debug, Parser)]
+pub struct P2pDns {
+    /// Do not query any configured dnsseeds
+    #[arg(long)]
+    pub no_dns: bool,
+    /// The dns names to query for bootstrapping
+    #[arg(long, default_values = p2p::dns::DNS_SEEDS)]
+    pub dns: Vec<String>,
+}
+
 /// Access to low-level features
 #[derive(Debug, Subcommand)]
 pub enum Plumbing {
+    AttachSig(AttachSig),
     Canonicalize(Canonicalize),
-    Fingerprint(Fingerprint),
-    Paths(Paths),
+    Completions(Completions),
     Config(Config),
-    Index(Index),
-    SyncYield(SyncYield),
-    SyncPull(SyncPull),
     ContainerUpdateCheck(ContainerUpdateCheck),
+    #[cfg(unix)]
+    DbServer(DbServer),
+    DnsBootstrap(DnsBootstrap),
+    Fingerprint(Fingerprint),
+    Fsck(Fsck),
     #[cfg(feature = "git")]
     GitObject(GitObject),
     #[cfg(feature = "git")]
     GitScrape(GitScrape),
-    AttachSig(AttachSig),
-    DnsBootstrap(DnsBootstrap),
-    #[cfg(unix)]
-    DbServer(DbServer),
+    Index(Index),
     Migrate(Migrate),
-    Fsck(Fsck),
-    Completions(Completions),
+    Paths(Paths),
+    PeerdbAdd(PeerdbAdd),
+    PeerdbList(PeerdbList),
+    SyncPull(SyncPull),
+    SyncYield(SyncYield),
+}
+
+/// Create a clear-signed document from a detached signature
+#[derive(Debug, Parser)]
+pub struct AttachSig {
+    pub content: PathBuf,
+    pub signatures: Vec<PathBuf>,
 }
 
 /// Transform a signed InRelease file into a canonical representation
@@ -238,47 +262,22 @@ pub struct Canonicalize {
     pub verify: bool,
 }
 
-/// Extract the fingerprint of a pgp key
+/// Generate shell completions
 #[derive(Debug, Parser)]
-pub struct Fingerprint {
-    /// The input files to read (- for stdin)
-    pub paths: Vec<FileOrStdin>,
+pub struct Completions {
+    pub shell: Shell,
 }
 
-/// Print configured paths
-#[derive(Debug, Parser)]
-pub struct Paths {}
+impl Completions {
+    pub fn generate(&self) -> Result<()> {
+        clap_complete::generate(self.shell, &mut Args::command(), "apt-swarm", &mut stdout());
+        Ok(())
+    }
+}
 
 /// Print applied configuration
 #[derive(Debug, Parser)]
 pub struct Config {}
-
-/// Scan the database and calculate the requested index
-#[derive(Debug, Parser)]
-pub struct Index {
-    /// The signing key to index
-    pub fingerprint: sequoia_openpgp::Fingerprint,
-    /// Only entries with this hash algorithm
-    pub hash_algo: String,
-    /// Calculate an index based on a specific prefix
-    pub prefix: Option<String>,
-    /// Calculate a batch index, they are bigger but allow syncs with fewer round-trips
-    #[arg(short, long)]
-    pub batch: bool,
-}
-
-/// Provide access to our signatures over stdio (use with sync-pull)
-#[derive(Debug, Parser)]
-pub struct SyncYield {}
-
-/// Fetch all available signatures over stdio (use with sync-yield)
-#[derive(Debug, Parser)]
-pub struct SyncPull {
-    pub keys: Vec<sequoia_openpgp::Fingerprint>,
-    /// Run the sync but do not import
-    #[arg(short = 'n', long)]
-    pub dry_run: bool,
-}
 
 /// Query a container registry for a more recent release of a given image
 #[derive(Debug, Parser)]
@@ -291,27 +290,9 @@ pub struct ContainerUpdateCheck {
     pub commit: String,
 }
 
-#[cfg(feature = "git")]
-/// Convert signed git objects into signature format used by apt-swarm
+/// Bind a unix domain socket and allow abstract database access from multiple processes
 #[derive(Debug, Parser)]
-pub struct GitObject {
-    pub paths: Vec<FileOrStdin>,
-    #[arg(short, long)]
-    pub kind: Option<plumbing::git::Kind>,
-}
-
-/// Attempt to export all signed objects from a git repo
-#[derive(Debug, Parser)]
-pub struct GitScrape {
-    pub paths: Vec<PathBuf>,
-}
-
-/// Create a clear-signed document from a detached signature
-#[derive(Debug, Parser)]
-pub struct AttachSig {
-    pub content: PathBuf,
-    pub signatures: Vec<PathBuf>,
-}
+pub struct DbServer {}
 
 /// Run dns bootstrap query, print results
 #[derive(Debug, Parser)]
@@ -327,13 +308,12 @@ pub struct DnsBootstrap {
     pub dns: Vec<String>,
 }
 
-/// Bind a unix domain socket and allow abstract database access from multiple processes
+/// Extract the fingerprint of a pgp key
 #[derive(Debug, Parser)]
-pub struct DbServer {}
-
-/// Open a fresh database and re-import the old data
-#[derive(Debug, Parser)]
-pub struct Migrate {}
+pub struct Fingerprint {
+    /// The input files to read (- for stdin)
+    pub paths: Vec<FileOrStdin>,
+}
 
 /// Verify stored objects
 #[derive(Debug, Parser)]
@@ -341,13 +321,63 @@ pub struct Fsck {
     pub prefix: Option<String>,
 }
 
-/// Generate shell completions
+#[cfg(feature = "git")]
+/// Convert signed git objects into signature format used by apt-swarm
 #[derive(Debug, Parser)]
-pub struct Completions {
-    pub shell: Shell,
+pub struct GitObject {
+    pub paths: Vec<FileOrStdin>,
+    #[arg(short, long)]
+    pub kind: Option<plumbing::git::Kind>,
 }
 
-pub fn gen_completions(args: &Completions) -> Result<()> {
-    clap_complete::generate(args.shell, &mut Args::command(), "apt-swarm", &mut stdout());
-    Ok(())
+#[cfg(feature = "git")]
+/// Attempt to export all signed objects from a git repo
+#[derive(Debug, Parser)]
+pub struct GitScrape {
+    pub paths: Vec<PathBuf>,
 }
+
+/// Scan the database and calculate the requested index
+#[derive(Debug, Parser)]
+pub struct Index {
+    /// The signing key to index
+    pub fingerprint: sequoia_openpgp::Fingerprint,
+    /// Only entries with this hash algorithm
+    pub hash_algo: String,
+    /// Calculate an index based on a specific prefix
+    pub prefix: Option<String>,
+    /// Calculate a batch index, they are bigger but allow syncs with fewer round-trips
+    #[arg(short, long)]
+    pub batch: bool,
+}
+
+/// Open a fresh database and re-import the old data
+#[derive(Debug, Parser)]
+pub struct Migrate {}
+
+/// Print configured paths
+#[derive(Debug, Parser)]
+pub struct Paths {}
+
+/// Add a peerdb entry
+#[derive(Debug, Parser)]
+pub struct PeerdbAdd {
+    pub addrs: Vec<PeerAddr>,
+}
+
+/// Read and print peerdb file
+#[derive(Debug, Parser)]
+pub struct PeerdbList {}
+
+/// Fetch all available signatures over stdio (use with sync-yield)
+#[derive(Debug, Parser)]
+pub struct SyncPull {
+    pub keys: Vec<sequoia_openpgp::Fingerprint>,
+    /// Run the sync but do not import
+    #[arg(short = 'n', long)]
+    pub dry_run: bool,
+}
+
+/// Provide access to our signatures over stdio (use with sync-pull)
+#[derive(Debug, Parser)]
+pub struct SyncYield {}

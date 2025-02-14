@@ -26,6 +26,9 @@ async-stream = "0.3.6"
 async-trait = "0.1.64"
 bstr = { version = "1.2.0", features = ["serde"] }
 bytes = "1.4.0"
+# we don't use bzip2 directly, but enable the libbz2-rs-sys feature
+bzip2 = { version = "0.5.1", features = ["libbz2-rs-sys"] }
+chrono = { version = "0.4", default-features = false, features = ["serde", "now"] }
 clap = { version = "4.0.32", features = ["derive", "env"] }
 clap_complete = "4.0.7"
 colored = "3"
@@ -54,7 +57,7 @@ socket2 = "0.5"
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "io-util", "io-std", "fs", "process", "net"] }
 tokio-socks = "0.5.1"
 toml = "0.8"
-url = "2.5.4"
+url = "2.5"
 
 [dev-dependencies]
 tempfile = "3.4.0"
