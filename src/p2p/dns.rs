@@ -19,7 +19,7 @@ pub async fn resolve(dns: &str) -> Result<impl Iterator<Item = SocketAddr>> {
     let host = format!("{dns}:16169");
     let stream = tokio::net::lookup_host(host.clone())
         .await
-        .context(anyhow!("Failed to resolve: {host:?}"))?;
+        .with_context(|| anyhow!("Failed to resolve: {host:?}"))?;
     Ok(stream)
 }
 

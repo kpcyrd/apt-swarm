@@ -1,5 +1,6 @@
 use crate::errors::*;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::net::SocketAddr;
 use std::str::FromStr;
 
@@ -88,7 +89,7 @@ impl FromStr for PeerGossip {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PeerAddr {
     Inet(SocketAddr),
     Onion((String, u16)),
@@ -111,6 +112,15 @@ impl PeerAddr {
             // key distance doesn't make sense here
             (PeerAddr::Onion(_), PeerAddr::Onion(_)) => Some(1),
             _ => None,
+        }
+    }
+}
+
+impl fmt::Debug for PeerAddr {
+    fn fmt(&self, w: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PeerAddr::Inet(addr) => fmt::Debug::fmt(addr, w),
+            PeerAddr::Onion((host, port)) => fmt::Debug::fmt(&format!("{host}:{port}"), w),
         }
     }
 }
@@ -320,5 +330,23 @@ mod tests {
     fn test_peer_addr_deserialize() {
         let addr = serde_json::from_str::<PeerAddr>("\"[2001:db8::]:16169\"").unwrap();
         assert_eq!(addr, PeerAddr::Inet("[2001:db8::]:16169".parse().unwrap()));
+    }
+
+    #[test]
+    fn test_peer_addr_debug_inet() {
+        let addr = PeerAddr::Inet("[2001:db8::]:16169".parse().unwrap());
+        assert_eq!(format!("{addr:?}"), "[2001:db8::]:16169");
+    }
+
+    #[test]
+    fn test_peer_addr_debug_onion() {
+        let addr = PeerAddr::Onion((
+            "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion".to_string(),
+            16169,
+        ));
+        assert_eq!(
+            format!("{addr:?}"),
+            "\"3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169\""
+        );
     }
 }
