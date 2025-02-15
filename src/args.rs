@@ -230,6 +230,7 @@ pub enum Plumbing {
     #[cfg(unix)]
     DbServer(DbServer),
     DnsBootstrap(DnsBootstrap),
+    Fetch(PlumbingFetch),
     Fingerprint(Fingerprint),
     Fsck(Fsck),
     #[cfg(feature = "git")]
@@ -306,6 +307,13 @@ pub struct DnsBootstrap {
     /// The dns name to query
     #[arg(default_values = p2p::dns::DNS_SEEDS)]
     pub dns: Vec<String>,
+}
+
+/// Fetch a link and write response to stdout
+#[derive(Debug, Parser)]
+pub struct PlumbingFetch {
+    /// The resource to fetch
+    pub url: String,
 }
 
 /// Extract the fingerprint of a pgp key

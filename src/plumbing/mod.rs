@@ -9,6 +9,7 @@ use crate::db::channel::DatabaseServer;
 use crate::db::header::CryptoHash;
 use crate::db::{AccessMode, Database, DatabaseClient};
 use crate::errors::*;
+use crate::fetch;
 use crate::keyring::Keyring;
 use crate::p2p;
 use crate::pgp;
@@ -18,6 +19,7 @@ use bstr::{BStr, BString};
 use colored::Colorize;
 use futures::StreamExt;
 use std::borrow::Cow;
+use std::net::SocketAddr;
 use std::sync::LazyLock;
 use tokio::fs;
 use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
@@ -65,7 +67,12 @@ async fn fsck_doc(hash: &[u8], data: &[u8], keyring: Option<&Keyring>) -> Result
     Ok(())
 }
 
-pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()> {
+pub async fn run(
+    config: Result<Config>,
+    args: Plumbing,
+    quiet: u8,
+    proxy: Option<SocketAddr>,
+) -> Result<()> {
     match args {
         Plumbing::Canonicalize(mut canonicalize) => {
             FileOrStdin::default_stdin(&mut canonicalize.paths);
@@ -92,6 +99,18 @@ pub async fn run(config: Result<Config>, args: Plumbing, quiet: u8) -> Result<()
                         stdout.write_all(&text).await?;
                     }
                 }
+            }
+        }
+        Plumbing::Fetch(fetch) => {
+            let client = fetch::client(proxy)?;
+            debug!("Fetching url: {:?}", fetch.url);
+            let response = client.get(fetch.url).send().await?;
+            debug!("Received response: {response:?}");
+            let mut stream = response.error_for_status()?.bytes_stream();
+
+            let mut stdout = io::stdout();
+            while let Some(item) = stream.next().await {
+                stdout.write_all(&item?).await?;
             }
         }
         Plumbing::Fingerprint(_fingerprint) => {
