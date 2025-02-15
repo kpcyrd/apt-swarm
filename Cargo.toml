@@ -22,7 +22,7 @@ git = ["gix", "gix-object"]
 [dependencies]
 advisory-lock = "0.3.0"
 anyhow = "1.0.68"
-async-stream = "0.3.6"
+async-stream = "0.3"
 async-trait = "0.1.64"
 bstr = { version = "1.2.0", features = ["serde"] }
 bytes = "1.4.0"
@@ -47,7 +47,7 @@ log = "0.4.17"
 lru = "0.13"
 lz4_flex = "0.11.3"
 memchr = "2.5.0"
-num-format = "0.4.4"
+num-format = "0.4"
 reqwest = { version = "0.12", features = ["rustls-tls", "socks"], default-features = false }
 sequoia-openpgp = { version = "1.21", default-features = false, features = ["compression", "crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto"] }
 serde = { version = "1.0.152", features = ["derive"] }
