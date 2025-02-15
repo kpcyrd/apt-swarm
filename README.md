@@ -7,6 +7,8 @@ An attempt to make a secure public p2p protocol that gossips about signed
 
 ## Running a node
 
+<a href="https://repology.org/project/apt-swarm/versions"><img align="right" src="https://repology.org/badge/vertical-allrepos/apt-swarm.svg" alt="Packaging status"></a>
+
 Install dependencies (Arch Linux):
 
 ```
