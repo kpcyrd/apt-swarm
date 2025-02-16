@@ -66,6 +66,7 @@ pub struct PeerStats {
     pub handshake: Metric,
     #[serde(default)]
     pub sync: Metric,
+    pub last_advertised: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -80,6 +81,9 @@ pub struct PeerDb {
 }
 
 impl PeerDb {
+    /// Register a peer address in the database
+    ///
+    /// Returns true if we haven't known this address before.
     pub fn add_peer(&mut self, addr: PeerAddr) -> (&mut PeerStats, bool) {
         trace!("Adding address to peerdb: {addr:?}");
         match self.data.peers.entry(addr) {
@@ -88,19 +92,23 @@ impl PeerDb {
         }
     }
 
-    pub fn add_peers(&mut self, addrs: &[PeerAddr]) -> bool {
-        let mut any_new = false;
+    /// Register a list of peers that has been actively advertised to us
+    ///
+    /// The database should always be written afterwards to `last_advertised`
+    /// is persisted properly.
+    pub fn add_advertised_peers(&mut self, addrs: &[PeerAddr]) {
+        let now = Utc::now();
         for addr in addrs {
-            let (_peer, new) = self.add_peer(addr.clone());
-            any_new |= new;
+            let (peer, _new) = self.add_peer(addr.clone());
+            peer.last_advertised = Some(now);
         }
-        any_new
     }
 
     pub fn peers(&self) -> &BTreeMap<PeerAddr, PeerStats> {
         &self.data.peers
     }
 
+    /// Return a sample of random peers to connect to
     pub fn sample(&self) -> Vec<PeerAddr> {
         let Some((first, _)) = fastrand::choice(&self.data.peers) else {
             return Vec::new();
@@ -109,6 +117,23 @@ impl PeerDb {
         vec![first.clone()]
     }
 
+    /// Remove old peers that both:
+    ///
+    /// - we couldn't successfully connect/handshake with in a while
+    /// - haven't been advertised anymore in a while
+    ///
+    /// Peers that are still being advertised, but we couldn't
+    /// connect/handshake with in a while are still being kept around so we don't
+    /// stop toning down our connection attempts to them.
+    ///
+    /// Returns true if any peers have been removed.
+    pub fn gc_old_peers(&mut self) -> bool {
+        false
+    }
+
+    /// Load the local peerdb file from disk.
+    ///
+    /// If this fails, return an empty database so we self-heal.
     pub async fn read(config: &Config) -> Result<Self> {
         let mut db = Self {
             data: Data::default(),
@@ -131,6 +156,8 @@ impl PeerDb {
         Ok(db)
     }
 
+    /// Write the peerdb to disk, in a way so we don't accidentally lose data
+    /// on an unexpected crash
     pub async fn write(&self) -> Result<()> {
         let buf = serde_json::to_string(&self.data).context("Failed to serialize peerdb")?;
 

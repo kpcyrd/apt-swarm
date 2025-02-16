@@ -191,11 +191,13 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
         // Wait for request, or automatically connect to known peer
         let req = tokio::select! {
             req = rx.recv() => {
-                if let Some(req) = req {
-                    req
-                } else {
-                    break;
-                }
+                let Some(req) = req else { break };
+
+                // register all addresses as known before attempting to sync
+                peerdb.add_advertised_peers(&req.addrs);
+                peerdb.write().await?;
+
+                req
             }
             _ = interval.tick() => {
                 // Automatically pick a known peer
@@ -209,11 +211,6 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
         };
 
         // TODO: allow concurrent syncs
-
-        // register all addresses as known beforehand
-        if peerdb.add_peers(&req.addrs) {
-            peerdb.write().await?;
-        }
 
         // sync from addresses
         for addr in req.addrs {
