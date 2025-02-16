@@ -1,6 +1,6 @@
 use crate::errors::*;
 use crate::p2p;
-use crate::p2p::proto::PeerAddr;
+use crate::p2p::proto::{PeerAddr, PeerFilter};
 #[cfg(feature = "git")]
 use crate::plumbing;
 use clap::{ArgAction, CommandFactory, Parser, Subcommand};
@@ -375,7 +375,10 @@ pub struct PeerdbAdd {
 
 /// Read and print peerdb file
 #[derive(Debug, Parser)]
-pub struct PeerdbList {}
+pub struct PeerdbList {
+    /// Filter by ip address or network (without port)
+    pub filters: Vec<PeerFilter>,
+}
 
 /// Fetch all available signatures over stdio (use with sync-yield)
 #[derive(Debug, Parser)]

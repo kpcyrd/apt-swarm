@@ -300,10 +300,17 @@ pub async fn run(
             }
             db.write().await?;
         }
-        Plumbing::PeerdbList(_list) => {
+        Plumbing::PeerdbList(list) => {
             let config = config?;
             let db = p2p::peerdb::PeerDb::read(&config).await?;
             for (addr, stats) in db.peers() {
+                if !list.filters.is_empty()
+                    && !list.filters.iter().any(|filter| filter.matches(addr))
+                {
+                    trace!("PeerAddr does not match filter: {addr:?}");
+                    continue;
+                }
+
                 if quiet == 0 {
                     println!("{}", addr.to_string().bold());
                     println!(
