@@ -10,6 +10,18 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tokio::fs;
 
+pub fn format_time_opt(time: Option<DateTime<Utc>>) -> Cow<'static, str> {
+    if let Some(time) = time {
+        Cow::Owned(format_time(time))
+    } else {
+        Cow::Borrowed("-")
+    }
+}
+
+pub fn format_time(time: DateTime<Utc>) -> String {
+    time.format("%FT%T").to_string()
+}
+
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Metric {
     pub last_attempt: Option<DateTime<Utc>>,
@@ -33,7 +45,7 @@ impl Metric {
     pub fn format_stats(&self) -> String {
         format!(
             "last_attempt={:<19}  errors_since={}  last_success={}",
-            Self::format_time_opt(self.last_attempt).yellow(),
+            format_time_opt(self.last_attempt).yellow(),
             self.errors_since
                 .to_string()
                 .color(if self.errors_since == 0 {
@@ -41,20 +53,8 @@ impl Metric {
                 } else {
                     Color::Red
                 }),
-            Self::format_time_opt(self.last_success).yellow(),
+            format_time_opt(self.last_success).yellow(),
         )
-    }
-
-    fn format_time_opt(time: Option<DateTime<Utc>>) -> Cow<'static, str> {
-        if let Some(time) = time {
-            Cow::Owned(Self::format_time(time))
-        } else {
-            Cow::Borrowed("-")
-        }
-    }
-
-    fn format_time(time: DateTime<Utc>) -> String {
-        time.format("%FT%T").to_string()
     }
 }
 

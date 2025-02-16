@@ -308,13 +308,18 @@ pub async fn run(
                     println!("{}", addr.to_string().bold());
                     println!(
                         "    {} {}",
-                        "connect:  ".green(),
+                        "connect:   ".green(),
                         stats.connect.format_stats()
                     );
                     println!(
                         "    {} {}",
-                        "handshake:".green(),
+                        "handshake: ".green(),
                         stats.handshake.format_stats()
+                    );
+                    println!(
+                        "    {} {}",
+                        "advertised:".green(),
+                        p2p::peerdb::format_time_opt(stats.last_advertised).yellow()
                     );
                 } else {
                     println!("{addr}");
