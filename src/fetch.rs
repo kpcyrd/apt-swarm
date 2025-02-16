@@ -38,16 +38,7 @@ async fn fetch_repository_updates(
     Ok(out)
 }
 
-pub async fn fetch_updates<D: DatabaseClient>(
-    db: &mut D,
-    keyring: Arc<Option<Keyring>>,
-    concurrency: Option<usize>,
-    repositories: Vec<Repository>,
-    proxy: Option<SocketAddr>,
-) -> Result<()> {
-    let concurrency = concurrency.unwrap_or(DEFAULT_CONCURRENCY);
-    let mut queue = repositories.into_iter();
-    let mut pool = JoinSet::new();
+pub fn client(proxy: Option<SocketAddr>) -> Result<reqwest::Client> {
     let mut client = reqwest::Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
         .read_timeout(READ_TIMEOUT);
@@ -58,6 +49,20 @@ pub async fn fetch_updates<D: DatabaseClient>(
         client = client.proxy(proxy);
     }
     let client = client.build().context("Failed to setup http client")?;
+    Ok(client)
+}
+
+pub async fn fetch_updates<D: DatabaseClient>(
+    db: &mut D,
+    keyring: Arc<Option<Keyring>>,
+    concurrency: Option<usize>,
+    repositories: Vec<Repository>,
+    proxy: Option<SocketAddr>,
+) -> Result<()> {
+    let concurrency = concurrency.unwrap_or(DEFAULT_CONCURRENCY);
+    let mut queue = repositories.into_iter();
+    let mut pool = JoinSet::new();
+    let client = client(proxy)?;
 
     loop {
         while pool.len() < concurrency {

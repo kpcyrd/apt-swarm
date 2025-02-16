@@ -205,7 +205,9 @@ async fn main() -> Result<()> {
 
             p2p::spawn(db, keyring, config, p2p, args.proxy).await?;
         }
-        SubCommand::Plumbing(plumbing) => plumbing::run(config, plumbing, args.quiet).await?,
+        SubCommand::Plumbing(plumbing) => {
+            plumbing::run(config, plumbing, args.quiet, args.proxy).await?
+        }
     }
 
     Ok(())
