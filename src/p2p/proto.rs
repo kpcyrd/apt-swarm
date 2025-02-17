@@ -1,4 +1,5 @@
 use crate::errors::*;
+use ipnetwork::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::net::{IpAddr, SocketAddr};
@@ -203,6 +204,75 @@ impl<'de> Deserialize<'de> for PeerAddr {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum PeerFilter {
+    IpNetwork(IpNetwork),
+    ExactIp { addr: IpAddr, port: Option<u16> },
+    ExactOnion { onion: String, port: Option<u16> },
+}
+
+impl PeerFilter {
+    pub fn matches(&self, addr: &PeerAddr) -> bool {
+        match (self, addr) {
+            (PeerFilter::IpNetwork(net), PeerAddr::Inet(peer)) => net.contains(peer.ip()),
+            (PeerFilter::IpNetwork(_), PeerAddr::Onion(_)) => false,
+            (PeerFilter::ExactIp { addr, port }, PeerAddr::Inet(peer)) => {
+                if let Some(port) = port {
+                    if *port != peer.port() {
+                        return false;
+                    }
+                }
+                peer.ip() == *addr
+            }
+            (PeerFilter::ExactIp { .. }, PeerAddr::Onion(_)) => false,
+            (PeerFilter::ExactOnion { .. }, PeerAddr::Inet(_)) => false,
+            (PeerFilter::ExactOnion { onion, port }, PeerAddr::Onion((peer_host, peer_port))) => {
+                if let Some(port) = port {
+                    if *port != *peer_port {
+                        return false;
+                    }
+                }
+                peer_host == onion
+            }
+        }
+    }
+}
+
+impl FromStr for PeerFilter {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        if s.contains("/") {
+            // this is an ip network without port
+            let network = s.parse::<IpNetwork>()?;
+            Ok(PeerFilter::IpNetwork(network))
+        } else if let Ok(addr) = s.parse::<PeerAddr>() {
+            // this is a full PeerAddr (with port)
+            match addr {
+                PeerAddr::Inet(addr) => Ok(PeerFilter::ExactIp {
+                    addr: addr.ip(),
+                    port: Some(addr.port()),
+                }),
+                PeerAddr::Onion((host, port)) => Ok(PeerFilter::ExactOnion {
+                    onion: host,
+                    port: Some(port),
+                }),
+            }
+        } else {
+            // this is a host without port
+            if s.ends_with(".onion") {
+                Ok(PeerFilter::ExactOnion {
+                    onion: s.to_string(),
+                    port: None,
+                })
+            } else {
+                let addr = s.parse::<IpAddr>()?;
+                Ok(PeerFilter::ExactIp { addr, port: None })
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,5 +471,275 @@ mod tests {
     fn test_detect_invalid_onion_address() {
         let addr = "3wisi2b\nfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169";
         assert!(addr.parse::<PeerAddr>().is_err());
+    }
+
+    #[test]
+    fn parse_peerfilter() {
+        fn test_matches(filter: PeerFilter) -> Vec<(&'static str, bool)> {
+            [
+                "192.168.1.2:16169",
+                "1.1.1.1:16169",
+                "1.1.1.1:1337",
+                "[2001:db8::]:16169",
+                "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169",
+                "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:1337",
+                "[fe80::1]:16169",
+                "[fe80::1]:1337",
+            ]
+            .into_iter()
+            .map(|addr| (addr, addr.parse::<PeerAddr>().unwrap()))
+            .map(|(addr, peer)| {
+                let matches = filter.matches(&peer);
+                (addr, matches)
+            })
+            .collect()
+        }
+
+        // test
+        let filter = "1.1.1.1".parse::<PeerFilter>().unwrap();
+        assert_eq!(
+            filter,
+            PeerFilter::ExactIp {
+                addr: "1.1.1.1".parse().unwrap(),
+                port: None,
+            }
+        );
+        assert_eq!(
+            test_matches(filter),
+            &[
+                ("192.168.1.2:16169", false),
+                ("1.1.1.1:16169", true),
+                ("1.1.1.1:1337", true),
+                ("[2001:db8::]:16169", false),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169",
+                    false
+                ),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:1337",
+                    false
+                ),
+                ("[fe80::1]:16169", false),
+                ("[fe80::1]:1337", false)
+            ]
+        );
+
+        // test
+        let filter = "::/0".parse::<PeerFilter>().unwrap();
+        assert_eq!(filter, PeerFilter::IpNetwork("::/0".parse().unwrap()),);
+        assert_eq!(
+            test_matches(filter),
+            &[
+                ("192.168.1.2:16169", false),
+                ("1.1.1.1:16169", false),
+                ("1.1.1.1:1337", false),
+                ("[2001:db8::]:16169", true),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169",
+                    false
+                ),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:1337",
+                    false
+                ),
+                ("[fe80::1]:16169", true),
+                ("[fe80::1]:1337", true)
+            ]
+        );
+
+        // test
+        let filter = "0.0.0.0/0".parse::<PeerFilter>().unwrap();
+        assert_eq!(filter, PeerFilter::IpNetwork("0.0.0.0/0".parse().unwrap()),);
+        assert_eq!(
+            test_matches(filter),
+            &[
+                ("192.168.1.2:16169", true),
+                ("1.1.1.1:16169", true),
+                ("1.1.1.1:1337", true),
+                ("[2001:db8::]:16169", false),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169",
+                    false
+                ),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:1337",
+                    false
+                ),
+                ("[fe80::1]:16169", false),
+                ("[fe80::1]:1337", false)
+            ]
+        );
+
+        // test
+        let filter = "1.1.1.1/8".parse::<PeerFilter>().unwrap();
+        assert_eq!(filter, PeerFilter::IpNetwork("1.1.1.1/8".parse().unwrap()),);
+        assert_eq!(
+            test_matches(filter),
+            &[
+                ("192.168.1.2:16169", false),
+                ("1.1.1.1:16169", true),
+                ("1.1.1.1:1337", true),
+                ("[2001:db8::]:16169", false),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169",
+                    false
+                ),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:1337",
+                    false
+                ),
+                ("[fe80::1]:16169", false),
+                ("[fe80::1]:1337", false)
+            ]
+        );
+
+        // test
+        let filter = "fe80::1".parse::<PeerFilter>().unwrap();
+        assert_eq!(
+            filter,
+            PeerFilter::ExactIp {
+                addr: "fe80::1".parse().unwrap(),
+                port: None,
+            }
+        );
+        assert_eq!(
+            test_matches(filter),
+            &[
+                ("192.168.1.2:16169", false),
+                ("1.1.1.1:16169", false),
+                ("1.1.1.1:1337", false),
+                ("[2001:db8::]:16169", false),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169",
+                    false
+                ),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:1337",
+                    false
+                ),
+                ("[fe80::1]:16169", true),
+                ("[fe80::1]:1337", true)
+            ]
+        );
+
+        // test
+        let filter = "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion"
+            .parse::<PeerFilter>()
+            .unwrap();
+        assert_eq!(
+            filter,
+            PeerFilter::ExactOnion {
+                onion: "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion".to_string(),
+                port: None,
+            }
+        );
+        assert_eq!(
+            test_matches(filter),
+            &[
+                ("192.168.1.2:16169", false),
+                ("1.1.1.1:16169", false),
+                ("1.1.1.1:1337", false),
+                ("[2001:db8::]:16169", false),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169",
+                    true
+                ),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:1337",
+                    true
+                ),
+                ("[fe80::1]:16169", false),
+                ("[fe80::1]:1337", false)
+            ]
+        );
+
+        // test
+        let filter = "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169"
+            .parse::<PeerFilter>()
+            .unwrap();
+        assert_eq!(
+            filter,
+            PeerFilter::ExactOnion {
+                onion: "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion".to_string(),
+                port: Some(16169),
+            }
+        );
+        assert_eq!(
+            test_matches(filter),
+            &[
+                ("192.168.1.2:16169", false),
+                ("1.1.1.1:16169", false),
+                ("1.1.1.1:1337", false),
+                ("[2001:db8::]:16169", false),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169",
+                    true
+                ),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:1337",
+                    false
+                ),
+                ("[fe80::1]:16169", false),
+                ("[fe80::1]:1337", false)
+            ]
+        );
+
+        // test
+        let filter = "1.1.1.1:16169".parse::<PeerFilter>().unwrap();
+        assert_eq!(
+            filter,
+            PeerFilter::ExactIp {
+                addr: "1.1.1.1".parse().unwrap(),
+                port: Some(16169),
+            }
+        );
+        assert_eq!(
+            test_matches(filter),
+            &[
+                ("192.168.1.2:16169", false),
+                ("1.1.1.1:16169", true),
+                ("1.1.1.1:1337", false),
+                ("[2001:db8::]:16169", false),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169",
+                    false
+                ),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:1337",
+                    false
+                ),
+                ("[fe80::1]:16169", false),
+                ("[fe80::1]:1337", false)
+            ]
+        );
+
+        // test
+        let filter = "[fe80::1]:16169".parse::<PeerFilter>().unwrap();
+        assert_eq!(
+            filter,
+            PeerFilter::ExactIp {
+                addr: "fe80::1".parse().unwrap(),
+                port: Some(16169),
+            }
+        );
+        assert_eq!(
+            test_matches(filter),
+            &[
+                ("192.168.1.2:16169", false),
+                ("1.1.1.1:16169", false),
+                ("1.1.1.1:1337", false),
+                ("[2001:db8::]:16169", false),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:16169",
+                    false
+                ),
+                (
+                    "3wisi2bfpxplne5wlwz4l5ucvsbaozbteaqnm62oxzmgwhb2qqxvsuyd.onion:1337",
+                    false
+                ),
+                ("[fe80::1]:16169", true),
+                ("[fe80::1]:1337", false)
+            ]
+        );
     }
 }

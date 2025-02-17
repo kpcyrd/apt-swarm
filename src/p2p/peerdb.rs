@@ -8,7 +8,23 @@ use std::borrow::Cow;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::time::Duration;
 use tokio::fs;
+
+const EXPIRE_ERROR_THRESHOLD: usize = 30;
+const EXPIRE_UNLESS_ADVERTISED_SINCE: Duration = Duration::from_secs(3600 * 24 * 14);
+
+pub fn format_time_opt(time: Option<DateTime<Utc>>) -> Cow<'static, str> {
+    if let Some(time) = time {
+        Cow::Owned(format_time(time))
+    } else {
+        Cow::Borrowed("-")
+    }
+}
+
+pub fn format_time(time: DateTime<Utc>) -> String {
+    time.format("%FT%T").to_string()
+}
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Metric {
@@ -33,7 +49,7 @@ impl Metric {
     pub fn format_stats(&self) -> String {
         format!(
             "last_attempt={:<19}  errors_since={}  last_success={}",
-            Self::format_time_opt(self.last_attempt).yellow(),
+            format_time_opt(self.last_attempt).yellow(),
             self.errors_since
                 .to_string()
                 .color(if self.errors_since == 0 {
@@ -41,20 +57,8 @@ impl Metric {
                 } else {
                     Color::Red
                 }),
-            Self::format_time_opt(self.last_success).yellow(),
+            format_time_opt(self.last_success).yellow(),
         )
-    }
-
-    fn format_time_opt(time: Option<DateTime<Utc>>) -> Cow<'static, str> {
-        if let Some(time) = time {
-            Cow::Owned(Self::format_time(time))
-        } else {
-            Cow::Borrowed("-")
-        }
-    }
-
-    fn format_time(time: DateTime<Utc>) -> String {
-        time.format("%FT%T").to_string()
     }
 }
 
@@ -64,8 +68,32 @@ pub struct PeerStats {
     pub connect: Metric,
     #[serde(default)]
     pub handshake: Metric,
-    #[serde(default)]
-    pub sync: Metric,
+    pub last_advertised: Option<DateTime<Utc>>,
+}
+
+impl PeerStats {
+    pub fn expired(&self, now: DateTime<Utc>) -> bool {
+        // only remove peers that have been advertised, but not recently
+        let Some(last_advertised) = self.last_advertised else {
+            return false;
+        };
+        if last_advertised + EXPIRE_UNLESS_ADVERTISED_SINCE > now {
+            return false;
+        }
+
+        // expire peers we couldn't connect to in a while
+        if self.connect.errors_since > EXPIRE_ERROR_THRESHOLD {
+            return true;
+        }
+
+        // expire peers we couldn't handshake with in a while
+        if self.handshake.errors_since > EXPIRE_ERROR_THRESHOLD {
+            return true;
+        }
+
+        // peer is still good
+        false
+    }
 }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -80,6 +108,9 @@ pub struct PeerDb {
 }
 
 impl PeerDb {
+    /// Register a peer address in the database
+    ///
+    /// Returns true if we haven't known this address before.
     pub fn add_peer(&mut self, addr: PeerAddr) -> (&mut PeerStats, bool) {
         trace!("Adding address to peerdb: {addr:?}");
         match self.data.peers.entry(addr) {
@@ -88,19 +119,23 @@ impl PeerDb {
         }
     }
 
-    pub fn add_peers(&mut self, addrs: &[PeerAddr]) -> bool {
-        let mut any_new = false;
+    /// Register a list of peers that has been actively advertised to us
+    ///
+    /// The database should always be written afterwards to `last_advertised`
+    /// is persisted properly.
+    pub fn add_advertised_peers(&mut self, addrs: &[PeerAddr]) {
+        let now = Utc::now();
         for addr in addrs {
-            let (_peer, new) = self.add_peer(addr.clone());
-            any_new |= new;
+            let (peer, _new) = self.add_peer(addr.clone());
+            peer.last_advertised = Some(now);
         }
-        any_new
     }
 
     pub fn peers(&self) -> &BTreeMap<PeerAddr, PeerStats> {
         &self.data.peers
     }
 
+    /// Return a sample of random peers to connect to
     pub fn sample(&self) -> Vec<PeerAddr> {
         let Some((first, _)) = fastrand::choice(&self.data.peers) else {
             return Vec::new();
@@ -109,6 +144,31 @@ impl PeerDb {
         vec![first.clone()]
     }
 
+    /// Remove old peers that both:
+    ///
+    /// - we couldn't successfully connect/handshake with in a while
+    /// - haven't been advertised anymore in a while
+    ///
+    /// Peers that are still being advertised, but we couldn't
+    /// connect/handshake with in a while are still being kept around so we don't
+    /// stop toning down our connection attempts to them.
+    ///
+    /// Returns true if any peers have been removed.
+    pub fn expire_old_peers(&mut self, now: DateTime<Utc>) -> bool {
+        let before = self.data.peers.len();
+        self.data.peers.retain(|_, peer| !peer.expired(now));
+        let after = self.data.peers.len();
+        if after != before {
+            info!("Removed {} expired peers", before.saturating_sub(after));
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Load the local peerdb file from disk.
+    ///
+    /// If this fails, return an empty database so we self-heal.
     pub async fn read(config: &Config) -> Result<Self> {
         let mut db = Self {
             data: Data::default(),
@@ -131,6 +191,8 @@ impl PeerDb {
         Ok(db)
     }
 
+    /// Write the peerdb to disk, in a way so we don't accidentally lose data
+    /// on an unexpected crash
     pub async fn write(&self) -> Result<()> {
         let buf = serde_json::to_string(&self.data).context("Failed to serialize peerdb")?;
 
@@ -168,5 +230,105 @@ mod tests {
                     .collect(),
             }
         );
+    }
+
+    #[test]
+    fn test_expired_peers() {
+        fn datetime(s: &str) -> DateTime<Utc> {
+            s.parse::<DateTime<Utc>>().unwrap()
+        }
+        let now = datetime("2025-02-17T01:00:00Z");
+
+        // empty
+        assert!(!PeerStats {
+            connect: Metric::default(),
+            handshake: Metric::default(),
+            last_advertised: None,
+        }
+        .expired(now));
+
+        // connect errors
+        assert!(PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: None,
+            },
+            handshake: Metric::default(),
+            last_advertised: Some(datetime("2025-01-01T13:37:00Z")),
+        }
+        .expired(now));
+
+        // handshake errors
+        assert!(PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 0,
+                last_success: Some(datetime("2025-02-17T00:45:00Z")),
+            },
+            handshake: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: Some(datetime("2025-01-14T00:45:00Z")),
+            },
+            last_advertised: Some(datetime("2025-01-01T13:37:00Z")),
+        }
+        .expired(now));
+
+        // connect errors but recently advertised
+        assert!(!PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: None,
+            },
+            handshake: Metric::default(),
+            last_advertised: Some(datetime("2025-02-14T13:37:00Z")),
+        }
+        .expired(now));
+
+        // handshake errors but recently advertised
+        assert!(!PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 0,
+                last_success: Some(datetime("2025-02-17T00:45:00Z")),
+            },
+            handshake: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: Some(datetime("2025-01-14T00:45:00Z")),
+            },
+            last_advertised: Some(datetime("2025-02-14T13:37:00Z")),
+        }
+        .expired(now));
+
+        // connect errors but never advertised
+        assert!(!PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: None,
+            },
+            handshake: Metric::default(),
+            last_advertised: None,
+        }
+        .expired(now));
+
+        // handshake errors but never advertised
+        assert!(!PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 0,
+                last_success: Some(datetime("2025-02-17T00:45:00Z")),
+            },
+            handshake: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: Some(datetime("2025-01-14T00:45:00Z")),
+            },
+            last_advertised: None,
+        }
+        .expired(now));
     }
 }
