@@ -1,0 +1,12 @@
+[container]
+image = "docker.io/library/archlinux"
+
+[packages]
+system = "archlinux"
+dependencies = [
+    "make",
+    "musl",
+    "musl-aarch64",
+    "rust-aarch64-musl",
+    "rust-musl",
+]

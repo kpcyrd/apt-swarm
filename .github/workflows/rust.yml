@@ -58,6 +58,44 @@ jobs:
     - name: Build
       run: cargo build --release --verbose
 
+  repro-env:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-linux-musl
+          - x86_64-unknown-linux-musl
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up cargo cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: repro-env-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: repro-env-${{ matrix.target }}-
+
+    - name: Install dependencies (apt)
+      run: sudo apt-get install repro-env
+
+    - name: Build
+      run: make
+
+    - name: Print sha256 of binary
+      run: sha256sum target/${{ matrix.target }}/release/apt-swarm
+
+    - name: Upload binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: bin-${{ matrix.target }}
+        path: target/${{ matrix.target }}/release/apt-swarm
+
   unit-test:
     runs-on: ${{ matrix.os }}
     strategy:
