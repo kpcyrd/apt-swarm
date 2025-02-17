@@ -8,7 +8,11 @@ use std::borrow::Cow;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::time::Duration;
 use tokio::fs;
+
+const EXPIRE_ERROR_THRESHOLD: usize = 30;
+const EXPIRE_UNLESS_ADVERTISED_SINCE: Duration = Duration::from_secs(3600 * 24 * 14);
 
 pub fn format_time_opt(time: Option<DateTime<Utc>>) -> Cow<'static, str> {
     if let Some(time) = time {
@@ -64,9 +68,32 @@ pub struct PeerStats {
     pub connect: Metric,
     #[serde(default)]
     pub handshake: Metric,
-    #[serde(default)]
-    pub sync: Metric,
     pub last_advertised: Option<DateTime<Utc>>,
+}
+
+impl PeerStats {
+    pub fn expired(&self, now: DateTime<Utc>) -> bool {
+        // only remove peers that have been advertised, but not recently
+        let Some(last_advertised) = self.last_advertised else {
+            return false;
+        };
+        if last_advertised + EXPIRE_UNLESS_ADVERTISED_SINCE > now {
+            return false;
+        }
+
+        // expire peers we couldn't connect to in a while
+        if self.connect.errors_since > EXPIRE_ERROR_THRESHOLD {
+            return true;
+        }
+
+        // expire peers we couldn't handshake with in a while
+        if self.handshake.errors_since > EXPIRE_ERROR_THRESHOLD {
+            return true;
+        }
+
+        // peer is still good
+        false
+    }
 }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -127,8 +154,10 @@ impl PeerDb {
     /// stop toning down our connection attempts to them.
     ///
     /// Returns true if any peers have been removed.
-    pub fn gc_old_peers(&mut self) -> bool {
-        false
+    pub fn gc_old_peers(&mut self, now: DateTime<Utc>) -> bool {
+        let before = self.data.peers.len();
+        self.data.peers.retain(|_, peer| !peer.expired(now));
+        self.data.peers.len() != before
     }
 
     /// Load the local peerdb file from disk.
@@ -195,5 +224,105 @@ mod tests {
                     .collect(),
             }
         );
+    }
+
+    #[test]
+    fn test_expired_peers() {
+        fn datetime(s: &str) -> DateTime<Utc> {
+            s.parse::<DateTime<Utc>>().unwrap()
+        }
+        let now = datetime("2025-02-17T01:00:00Z");
+
+        // empty
+        assert!(!PeerStats {
+            connect: Metric::default(),
+            handshake: Metric::default(),
+            last_advertised: None,
+        }
+        .expired(now));
+
+        // connect errors
+        assert!(PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: None,
+            },
+            handshake: Metric::default(),
+            last_advertised: Some(datetime("2025-01-01T13:37:00Z")),
+        }
+        .expired(now));
+
+        // handshake errors
+        assert!(PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 0,
+                last_success: Some(datetime("2025-02-17T00:45:00Z")),
+            },
+            handshake: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: Some(datetime("2025-01-14T00:45:00Z")),
+            },
+            last_advertised: Some(datetime("2025-01-01T13:37:00Z")),
+        }
+        .expired(now));
+
+        // connect errors but recently advertised
+        assert!(!PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: None,
+            },
+            handshake: Metric::default(),
+            last_advertised: Some(datetime("2025-02-14T13:37:00Z")),
+        }
+        .expired(now));
+
+        // handshake errors but recently advertised
+        assert!(!PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 0,
+                last_success: Some(datetime("2025-02-17T00:45:00Z")),
+            },
+            handshake: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: Some(datetime("2025-01-14T00:45:00Z")),
+            },
+            last_advertised: Some(datetime("2025-02-14T13:37:00Z")),
+        }
+        .expired(now));
+
+        // connect errors but never advertised
+        assert!(!PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: None,
+            },
+            handshake: Metric::default(),
+            last_advertised: None,
+        }
+        .expired(now));
+
+        // handshake errors but never advertised
+        assert!(!PeerStats {
+            connect: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 0,
+                last_success: Some(datetime("2025-02-17T00:45:00Z")),
+            },
+            handshake: Metric {
+                last_attempt: Some(datetime("2025-02-17T00:45:00Z")),
+                errors_since: 500,
+                last_success: Some(datetime("2025-01-14T00:45:00Z")),
+            },
+            last_advertised: None,
+        }
+        .expired(now));
     }
 }
