@@ -154,10 +154,16 @@ impl PeerDb {
     /// stop toning down our connection attempts to them.
     ///
     /// Returns true if any peers have been removed.
-    pub fn gc_old_peers(&mut self, now: DateTime<Utc>) -> bool {
+    pub fn expire_old_peers(&mut self, now: DateTime<Utc>) -> bool {
         let before = self.data.peers.len();
         self.data.peers.retain(|_, peer| !peer.expired(now));
-        self.data.peers.len() != before
+        let after = self.data.peers.len();
+        if after != before {
+            info!("Removed {} expired peers", before.saturating_sub(after));
+            true
+        } else {
+            false
+        }
     }
 
     /// Load the local peerdb file from disk.

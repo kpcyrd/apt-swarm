@@ -242,6 +242,7 @@ pub enum Plumbing {
     Paths(Paths),
     PeerdbAdd(PeerdbAdd),
     PeerdbList(PeerdbList),
+    PeerdbGc(PeerdbGc),
     SyncPull(SyncPull),
     SyncYield(SyncYield),
 }
@@ -379,6 +380,10 @@ pub struct PeerdbList {
     /// Filter by ip address or network (without port)
     pub filters: Vec<PeerFilter>,
 }
+
+/// Remove old peerdb entries
+#[derive(Debug, Parser)]
+pub struct PeerdbGc {}
 
 /// Fetch all available signatures over stdio (use with sync-yield)
 #[derive(Debug, Parser)]

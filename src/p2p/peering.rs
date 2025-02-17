@@ -7,6 +7,7 @@ use crate::p2p::peerdb::PeerDb;
 use crate::p2p::proto::{PeerAddr, SyncRequest};
 use crate::sync;
 use crate::timers::EasedInterval;
+use chrono::Utc;
 use ipnetwork::IpNetwork;
 use sequoia_openpgp::Fingerprint;
 use std::collections::VecDeque;
@@ -269,6 +270,10 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
                     cooldown.mark_bad(addr);
                 }
             }
+            peerdb.write().await?;
+        }
+
+        if peerdb.expire_old_peers(Utc::now()) {
             peerdb.write().await?;
         }
     }

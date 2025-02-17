@@ -16,6 +16,7 @@ use crate::pgp;
 use crate::signed::Signed;
 use crate::sync;
 use bstr::{BStr, BString};
+use chrono::Utc;
 use colored::Colorize;
 use futures::StreamExt;
 use std::borrow::Cow;
@@ -331,6 +332,13 @@ pub async fn run(
                 } else {
                     println!("{addr}");
                 }
+            }
+        }
+        Plumbing::PeerdbGc(_gc) => {
+            let config = config?;
+            let mut db = p2p::peerdb::PeerDb::read(&config).await?;
+            if db.expire_old_peers(Utc::now()) {
+                db.write().await?;
             }
         }
         Plumbing::Migrate(_migrate) => {
