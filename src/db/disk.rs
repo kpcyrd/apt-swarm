@@ -229,7 +229,7 @@ impl Database {
         let compressed = compression::compress(value)
             .await
             .with_context(|| anyhow!("Failed to compress block data: {path:?}"))?;
-        let header = BlockHeader::new(hash, compressed.len());
+        let header = BlockHeader::new(hash, value.len(), compressed.len());
 
         // write to file
         header
