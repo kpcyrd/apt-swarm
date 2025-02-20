@@ -3,6 +3,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub type HashLength = u16;
+pub type UncompressedLength = u64;
 pub type DataLength = u64;
 
 #[derive(Debug, PartialEq)]
@@ -63,27 +64,40 @@ impl CryptoHash {
 #[derive(Debug, PartialEq)]
 pub struct BlockHeader {
     pub hash: CryptoHash,
-    pub length: u64,
+    pub uncompressed_length: u64,
+    pub data_length: u64,
 }
 
 impl BlockHeader {
-    pub fn new(hash: CryptoHash, length: usize) -> Self {
+    pub fn new(hash: CryptoHash, uncompressed_length: usize, data_length: usize) -> Self {
         Self {
             hash,
-            length: length as u64,
+            uncompressed_length: uncompressed_length as u64,
+            data_length: data_length as u64,
         }
+    }
+
+    async fn read_u16<R: AsyncRead + Unpin>(mut reader: R, n: &mut usize) -> Result<u16> {
+        let mut bytes = [0u8; u16::BITS as usize / 8];
+        *n += reader.read_exact(&mut bytes).await?;
+        let num = u16::from_be_bytes(bytes);
+        Ok(num)
+    }
+
+    async fn read_u64<R: AsyncRead + Unpin>(mut reader: R, n: &mut usize) -> Result<u64> {
+        let mut bytes = [0u8; u64::BITS as usize / 8];
+        *n += reader.read_exact(&mut bytes).await?;
+        let num = u64::from_be_bytes(bytes);
+        Ok(num)
     }
 
     pub async fn parse<R: AsyncRead + Unpin>(mut reader: R) -> Result<(Self, usize)> {
         let mut n = 0;
 
         // read hash length field
-        let mut hash_length_bytes = [0u8; HashLength::BITS as usize / 8];
-        n += reader
-            .read_exact(&mut hash_length_bytes)
+        let hash_length = Self::read_u16(&mut reader, &mut n)
             .await
             .context("Failed to read hash length")?;
-        let hash_length = HashLength::from_be_bytes(hash_length_bytes);
 
         // read hash bytes
         let mut hash_bytes = vec![0u8; hash_length as usize];
@@ -93,17 +107,20 @@ impl BlockHeader {
             .context("Failed to read hash bytes")?;
         let hash = CryptoHash::decode(&hash_bytes)?;
 
+        // read uncompressed length field
+        let uncompressed_length = Self::read_u64(&mut reader, &mut n)
+            .await
+            .context("Failed to read uncompressed length")?;
+
         // read data length field
-        let mut data_length_bytes = [0u8; DataLength::BITS as usize / 8];
-        n += reader
-            .read_exact(&mut data_length_bytes)
+        let data_length = Self::read_u64(&mut reader, &mut n)
             .await
             .context("Failed to read data length")?;
-        let data_length = DataLength::from_be_bytes(data_length_bytes);
 
         let header = BlockHeader {
             hash,
-            length: data_length,
+            uncompressed_length,
+            data_length,
         };
         trace!("Parsed block header: {header:?}");
         Ok((header, n))
@@ -112,6 +129,7 @@ impl BlockHeader {
     pub async fn write<W: AsyncWrite + Unpin>(&self, mut writer: W) -> Result<usize> {
         let mut n = 0;
 
+        // hash/key
         let encoded = self.hash.encode()?;
         let hash_length_bytes = HashLength::to_be_bytes(encoded.len() as u16);
         writer.write_all(&hash_length_bytes).await?;
@@ -120,7 +138,13 @@ impl BlockHeader {
         writer.write_all(&encoded).await?;
         n += encoded.len();
 
-        let data_length_bytes = DataLength::to_be_bytes(self.length);
+        // uncompressed length
+        let uncompressed_length_bytes = UncompressedLength::to_be_bytes(self.uncompressed_length);
+        writer.write_all(&uncompressed_length_bytes).await?;
+        n += uncompressed_length_bytes.len();
+
+        // compressed length
+        let data_length_bytes = DataLength::to_be_bytes(self.data_length);
         writer.write_all(&data_length_bytes).await?;
         n += data_length_bytes.len();
 
@@ -142,6 +166,7 @@ mod tests {
             0x0e, 0xfc, 0xa4, 0xb7, 0x2d, 0x8c, 0x2b, 0xfb, 0x7b, 0x74, 0x33, 0x9d, 0x30, 0xba,
             0x94, 0x05, 0x6b, 0x14,
         ]);
+        bytes.extend(1337u64.to_be_bytes());
         bytes.extend(4u64.to_be_bytes());
         // data is not part of the header
         // bytes.extend(b"ohai");
@@ -153,10 +178,11 @@ mod tests {
                     "sha256:e84712238709398f6d349dc2250b0efca4b72d8c2bfb7b74339d30ba94056b14"
                         .to_string()
                 ),
-                length: 4,
+                uncompressed_length: 1337,
+                data_length: 4,
             }
         );
-        assert_eq!(bytes_read, 49);
+        assert_eq!(bytes_read, 57);
     }
 
     #[tokio::test]
@@ -166,7 +192,8 @@ mod tests {
                 "sha256:e84712238709398f6d349dc2250b0efca4b72d8c2bfb7b74339d30ba94056b14"
                     .to_string(),
             ),
-            length: 4,
+            uncompressed_length: 1337,
+            data_length: 4,
         };
         let mut buf = Vec::new();
         header.write(&mut buf).await.unwrap();
@@ -179,6 +206,7 @@ mod tests {
             0x0e, 0xfc, 0xa4, 0xb7, 0x2d, 0x8c, 0x2b, 0xfb, 0x7b, 0x74, 0x33, 0x9d, 0x30, 0xba,
             0x94, 0x05, 0x6b, 0x14,
         ]);
+        expected.extend(1337u64.to_be_bytes());
         expected.extend(4u64.to_be_bytes());
 
         assert_eq!(buf, expected);

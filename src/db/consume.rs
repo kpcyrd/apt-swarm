@@ -26,7 +26,7 @@ impl Consume for ReadValue {
         mut reader: R,
         header: &BlockHeader,
     ) -> Result<Self::Item> {
-        let mut compressed = vec![0u8; header.length as usize];
+        let mut compressed = vec![0u8; header.data_length as usize];
         reader
             .read_exact(&mut compressed)
             .await
@@ -52,10 +52,10 @@ impl Consume for FastSkipValue {
         header: &BlockHeader,
     ) -> Result<Self::Item> {
         reader
-            .seek(SeekFrom::Current(header.length as i64))
+            .seek(SeekFrom::Current(header.data_length as i64))
             .await
             .context("Failed to seek over block data")?;
-        trace!("Seeked forward by {} bytes", header.length);
+        trace!("Seeked forward by {} bytes", header.data_length);
         Ok(())
     }
 }
@@ -82,13 +82,16 @@ impl Consume for CheckedSkipValue {
             .context("Failed to seek to file end")?;
 
         let remaining = end - pos;
-        if remaining < header.length {
-            bail!("Seek failed, missing {} bytes", header.length - remaining);
+        if remaining < header.data_length {
+            bail!(
+                "Seek failed, missing {} bytes",
+                header.data_length - remaining
+            );
         }
 
         // we have enough data, perform seek
         let new = reader
-            .seek(SeekFrom::Start(pos + header.length))
+            .seek(SeekFrom::Start(pos + header.data_length))
             .await
             .context("Failed to seek over block data")?;
         trace!("Seeked forward by {} bytes", new - pos);
