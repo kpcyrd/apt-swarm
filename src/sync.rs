@@ -316,15 +316,12 @@ impl SyncQueue {
 
     pub fn pop_next(&mut self) -> Option<Option<String>> {
         loop {
-            if let Some(mut entry) = self.queues.last_entry() {
-                let queue = entry.get_mut();
-                if let Some(item) = queue.pop_front() {
-                    return Some(item);
-                } else {
-                    entry.remove_entry();
-                }
+            let mut entry = self.queues.last_entry()?;
+            let queue = entry.get_mut();
+            if let Some(item) = queue.pop_front() {
+                return Some(item);
             } else {
-                return None;
+                entry.remove_entry();
             }
         }
     }
