@@ -12,6 +12,7 @@ use crate::errors::*;
 use crate::fetch;
 use crate::keyring::Keyring;
 use crate::p2p;
+use crate::p2p::peerdb::{self, PeerDb};
 use crate::pgp;
 use crate::signed::Signed;
 use crate::sync;
@@ -24,6 +25,7 @@ use std::net::SocketAddr;
 use std::sync::LazyLock;
 use tokio::fs;
 use tokio::io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
+use tokio::task::JoinSet;
 
 static FSCK_OK: LazyLock<String> = LazyLock::new(|| " OK\n".bold().green().to_string());
 static FSCK_ERR: LazyLock<String> = LazyLock::new(|| " ERR\n".bold().red().to_string());
@@ -156,10 +158,35 @@ pub async fn run(
                 println!("{index}  {counter}");
             }
         }
-        Plumbing::SyncYield(_sync_yield) => {
+        Plumbing::SyncYield(sync_yield) => {
             let config = config?;
             let mut db = Database::open(&config, AccessMode::Relaxed).await?;
-            sync::sync_yield(&mut db, io::stdin(), &mut io::stdout(), None).await?;
+
+            let mut set = JoinSet::new();
+            let peerdb = if sync_yield.pex {
+                let peerdb = PeerDb::read(&config).await?;
+                let (peerdb_tx, peerdb_rx) = peerdb::Client::new();
+                set.spawn(async move {
+                    peerdb::spawn(peerdb, peerdb_rx)
+                        .await
+                        .context("Peerdb thread has crashed")?;
+                    Ok(())
+                });
+                Some(peerdb_tx)
+            } else {
+                None
+            };
+
+            set.spawn(async move {
+                sync::sync_yield(&mut db, peerdb, io::stdin(), &mut io::stdout(), None)
+                    .await
+                    .context("Error during sync yield")
+            });
+            match set.join_next().await {
+                Some(Ok(res)) => res?,
+                Some(Err(err)) => bail!("Thread has crashed: {err:?}"),
+                None => (),
+            }
         }
         Plumbing::SyncPull(sync_pull) => {
             let config = config?;

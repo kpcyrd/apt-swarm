@@ -396,4 +396,8 @@ pub struct SyncPull {
 
 /// Provide access to our signatures over stdio (use with sync-pull)
 #[derive(Debug, Parser)]
-pub struct SyncYield {}
+pub struct SyncYield {
+    /// Enable access to peer-exchange queries
+    #[arg(long)]
+    pub pex: bool,
+}

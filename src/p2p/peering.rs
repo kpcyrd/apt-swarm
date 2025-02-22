@@ -3,11 +3,10 @@ use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::net;
 use crate::p2p;
-use crate::p2p::peerdb::PeerDb;
+use crate::p2p::peerdb::{self, MetricType};
 use crate::p2p::proto::{PeerAddr, SyncRequest};
 use crate::sync;
 use crate::timers::EasedInterval;
-use chrono::Utc;
 use ipnetwork::IpNetwork;
 use sequoia_openpgp::Fingerprint;
 use std::collections::VecDeque;
@@ -53,21 +52,19 @@ pub const COOLDOWN_HOST_THRESHOLD: usize = 10;
 pub async fn pull_from_peer<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: &Keyring,
-    peerdb: &mut PeerDb,
+    peerdb: &peerdb::Client,
     fingerprints: &[Fingerprint],
     addr: &PeerAddr,
     proxy: Option<SocketAddr>,
 ) -> Result<()> {
-    let (peer, _new) = peerdb.add_peer(addr.clone());
-
     // setup connection
     let mut sock = match net::connect(addr, proxy).await {
         Ok(sock) => {
-            peer.connect.successful();
+            peerdb.successful(MetricType::Connect, addr.clone());
             sock
         }
         Err(err) => {
-            peer.connect.error();
+            peerdb.error(MetricType::Connect, addr.clone());
             return Err(err);
         }
     };
@@ -76,15 +73,15 @@ pub async fn pull_from_peer<D: DatabaseClient + Sync + Send>(
     // perform handshake
     match net::handshake(&mut rx, &mut tx).await {
         Ok(_) => {
-            peer.handshake.successful();
+            peerdb.successful(MetricType::Handshake, addr.clone());
         }
         Err(err) => {
-            peer.handshake.error();
+            peerdb.error(MetricType::Handshake, addr.clone());
             tx.shutdown().await.ok();
             return Err(err);
         }
     }
-    peerdb.write().await?;
+    peerdb.write();
 
     // sync from peer
     let result = sync::sync_pull(db, keyring, fingerprints, false, &mut tx, rx).await;
@@ -180,7 +177,7 @@ impl Default for Cooldowns {
 pub async fn spawn<D: DatabaseClient + Sync + Send>(
     db: &mut D,
     keyring: Keyring,
-    mut peerdb: PeerDb,
+    peerdb: peerdb::Client,
     proxy: Option<SocketAddr>,
     mut rx: mpsc::Receiver<p2p::proto::SyncRequest>,
 ) -> Result<Infallible> {
@@ -195,14 +192,13 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
                 let Some(req) = req else { break };
 
                 // register all addresses as known before attempting to sync
-                peerdb.add_advertised_peers(&req.addrs);
-                peerdb.write().await?;
+                peerdb.add_advertised_peers(req.addrs.clone());
 
                 req
             }
             _ = interval.tick() => {
                 // Automatically pick a known peer
-                let addrs = peerdb.sample();
+                let addrs = peerdb.sample(None).await?;
                 debug!("Automatically selected peers for periodic sync: {addrs:?}");
                 SyncRequest {
                     hint: None,
@@ -258,7 +254,7 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
             p2p::random_jitter(P2P_SYNC_CONNECT_JITTER).await;
 
             info!("Syncing from remote peer: {addr:?}");
-            let ret = pull_from_peer(db, &keyring, &mut peerdb, &[], &addr, proxy).await;
+            let ret = pull_from_peer(db, &keyring, &peerdb, &[], &addr, proxy).await;
             debug!("Connection to {addr:?} has been closed");
             match ret {
                 Ok(_) => {
@@ -270,11 +266,7 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
                     cooldown.mark_bad(addr);
                 }
             }
-            peerdb.write().await?;
-        }
-
-        if peerdb.expire_old_peers(Utc::now()) {
-            peerdb.write().await?;
+            peerdb.write();
         }
     }
 

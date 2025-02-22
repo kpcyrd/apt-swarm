@@ -1,6 +1,7 @@
 use crate::db::{Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
+use crate::p2p::peerdb;
 use crate::signed::Signed;
 use bstr::BStr;
 use futures::StreamExt;
@@ -27,6 +28,9 @@ pub const BATCH_INDEX_MAX_SIZE: usize = 16;
 
 /// If the number of entries is greater than zero, but <= this threshold, send a dump instead of an index
 pub const SPILL_THRESHOLD: usize = 1;
+
+/// Stop announcing peers we couldn't handshake with recently
+const PEX_MAX_SUCCESS_AGE: Duration = Duration::from_secs(3600 * 24 * 5);
 
 #[derive(Debug, Clone)]
 pub enum Query {
@@ -237,6 +241,7 @@ pub async fn sync_yield<
     W: AsyncWrite + Unpin,
 >(
     db: &mut D,
+    peerdb: Option<peerdb::Client>,
     rx: R,
     mut tx: W,
     timeout: Option<Duration>,
@@ -289,8 +294,14 @@ pub async fn sync_yield<
                 }
             }
             Query::Pex => {
-                // TODO
-                tx.write_all(b":0\n").await?;
+                let mut buf = String::new();
+                if let Some(peerdb) = &peerdb {
+                    for addr in peerdb.sample(Some(PEX_MAX_SUCCESS_AGE)).await? {
+                        buf += &format!("{addr}\n");
+                    }
+                }
+                tx.write_all(format!(":{}\n", buf.len()).as_bytes()).await?;
+                tx.write_all(buf.as_bytes()).await?;
             }
             Query::Unknown(data) => {
                 debug!("Received unknown command from network: {data:?}");
@@ -316,15 +327,12 @@ impl SyncQueue {
 
     pub fn pop_next(&mut self) -> Option<Option<String>> {
         loop {
-            if let Some(mut entry) = self.queues.last_entry() {
-                let queue = entry.get_mut();
-                if let Some(item) = queue.pop_front() {
-                    return Some(item);
-                } else {
-                    entry.remove_entry();
-                }
+            let mut entry = self.queues.last_entry()?;
+            let queue = entry.get_mut();
+            if let Some(item) = queue.pop_front() {
+                return Some(item);
             } else {
-                return None;
+                entry.remove_entry();
             }
         }
     }
@@ -524,7 +532,7 @@ mod tests {
         let (client, server) = tokio::io::duplex(64);
         let (client_rx, client_tx) = tokio::io::split(client);
         let (server_rx, server_tx) = tokio::io::split(server);
-        let task_yield = sync_yield(db_a, server_rx, server_tx, None);
+        let task_yield = sync_yield(db_a, None, server_rx, server_tx, None);
         let task_pull = sync_pull(db_b, keyring, &[], false, client_tx, client_rx);
 
         tokio::select! {
