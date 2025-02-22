@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::errors::*;
 use crate::p2p::proto::PeerAddr;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use colored::{Color, Colorize};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -19,11 +19,15 @@ const EXPIRE_ERROR_THRESHOLD: usize = 30;
 const EXPIRE_UNLESS_ADVERTISED_SINCE: Duration = Duration::from_secs(3600 * 24 * 14);
 
 const PEERDB_EXPIRE_INTERVAL: Duration = Duration::from_secs(60);
+const PEERDB_SAMPLE_SIZE: usize = 5;
 
 #[derive(Debug)]
 pub enum Req {
     AddAdvertisedPeers(Vec<PeerAddr>),
-    Sample(mpsc::Sender<Vec<PeerAddr>>),
+    Sample {
+        max_success_age: Duration,
+        tx: mpsc::Sender<Vec<PeerAddr>>,
+    },
     Metric {
         metric: MetricType,
         value: MetricValue,
@@ -80,9 +84,16 @@ impl Client {
         })
     }
 
-    pub async fn sample(&self) -> Result<Vec<PeerAddr>> {
+    pub async fn sample(&self, max_success_age: Duration) -> Result<Vec<PeerAddr>> {
         let (tx, rx) = mpsc::channel(1);
-        self.request(Req::Sample(tx), rx).await
+        self.request(
+            Req::Sample {
+                max_success_age,
+                tx,
+            },
+            rx,
+        )
+        .await
     }
 
     pub fn write(&self) {
@@ -238,12 +249,28 @@ impl PeerDb {
     }
 
     /// Return a sample of random peers to connect to
-    pub fn sample(&self) -> Vec<PeerAddr> {
-        let Some((first, _)) = fastrand::choice(&self.data.peers) else {
-            return Vec::new();
-        };
+    pub fn sample(&self, max_success_age: Duration) -> Vec<PeerAddr> {
+        let now = Utc::now();
+        let delta = TimeDelta::from_std(max_success_age).unwrap_or(TimeDelta::MAX);
+
+        // apply `max_success_age` filtering
+        let mut peers = self
+            .data
+            .peers
+            .iter()
+            .flat_map(|(addr, stats)| {
+                let last_success = stats.handshake.last_success?;
+                if now.signed_duration_since(last_success) > delta {
+                    return None;
+                }
+                Some(addr.clone())
+            })
+            .collect::<Vec<_>>();
+
+        fastrand::shuffle(&mut peers);
+
         // TODO: make this smarter
-        vec![first.clone()]
+        peers.into_iter().take(PEERDB_SAMPLE_SIZE).collect()
     }
 
     /// Remove old peers that both:
@@ -326,8 +353,8 @@ pub async fn spawn(mut peerdb: PeerDb, mut rx: mpsc::Receiver<Req>) -> Result<In
                         peerdb.add_advertised_peers(&addrs);
                         peerdb.write().await?;
                     }
-                    Req::Sample(tx) => {
-                        let sample = peerdb.sample();
+                    Req::Sample { max_success_age, tx } => {
+                        let sample = peerdb.sample(max_success_age);
                         tx.send(sample).await.ok();
                     }
                     Req::Metric { metric, value, addr } => {

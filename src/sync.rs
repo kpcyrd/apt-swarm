@@ -29,6 +29,9 @@ pub const BATCH_INDEX_MAX_SIZE: usize = 16;
 /// If the number of entries is greater than zero, but <= this threshold, send a dump instead of an index
 pub const SPILL_THRESHOLD: usize = 1;
 
+/// Stop announcing peers we couldn't handshake with recently
+const PEX_MAX_SUCCESS_AGE: Duration = Duration::from_secs(3600 * 24 * 5);
+
 #[derive(Debug, Clone)]
 pub enum Query {
     Tree(TreeQuery),
@@ -293,7 +296,7 @@ pub async fn sync_yield<
             Query::Pex => {
                 if let Some(peerdb) = &peerdb {
                     let mut buf = String::new();
-                    for addr in peerdb.sample().await? {
+                    for addr in peerdb.sample(PEX_MAX_SUCCESS_AGE).await? {
                         buf += &format!("{addr}\n");
                     }
                     tx.write_all(format!(":{}\n", buf.len()).as_bytes()).await?;

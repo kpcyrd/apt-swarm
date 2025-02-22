@@ -198,7 +198,7 @@ pub async fn spawn<D: DatabaseClient + Sync + Send>(
             }
             _ = interval.tick() => {
                 // Automatically pick a known peer
-                let addrs = peerdb.sample().await?;
+                let addrs = peerdb.sample(Duration::MAX).await?;
                 debug!("Automatically selected peers for periodic sync: {addrs:?}");
                 SyncRequest {
                     hint: None,
