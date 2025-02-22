@@ -296,7 +296,7 @@ pub async fn sync_yield<
             Query::Pex => {
                 let mut buf = String::new();
                 if let Some(peerdb) = &peerdb {
-                    for addr in peerdb.sample(PEX_MAX_SUCCESS_AGE).await? {
+                    for addr in peerdb.sample(Some(PEX_MAX_SUCCESS_AGE)).await? {
                         buf += &format!("{addr}\n");
                     }
                 }

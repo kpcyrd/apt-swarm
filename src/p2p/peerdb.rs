@@ -25,7 +25,7 @@ const PEERDB_SAMPLE_SIZE: usize = 5;
 pub enum Req {
     AddAdvertisedPeers(Vec<PeerAddr>),
     Sample {
-        max_success_age: Duration,
+        max_success_age: Option<Duration>,
         tx: mpsc::Sender<Vec<PeerAddr>>,
     },
     Metric {
@@ -84,7 +84,7 @@ impl Client {
         })
     }
 
-    pub async fn sample(&self, max_success_age: Duration) -> Result<Vec<PeerAddr>> {
+    pub async fn sample(&self, max_success_age: Option<Duration>) -> Result<Vec<PeerAddr>> {
         let (tx, rx) = mpsc::channel(1);
         self.request(
             Req::Sample {
@@ -249,9 +249,10 @@ impl PeerDb {
     }
 
     /// Return a sample of random peers to connect to
-    pub fn sample(&self, max_success_age: Duration) -> Vec<PeerAddr> {
+    pub fn sample(&self, max_success_age: Option<Duration>) -> Vec<PeerAddr> {
         let now = Utc::now();
-        let delta = TimeDelta::from_std(max_success_age).unwrap_or(TimeDelta::MAX);
+        let delta = max_success_age
+            .map(|max_success_age| TimeDelta::from_std(max_success_age).unwrap_or(TimeDelta::MAX));
 
         // apply `max_success_age` filtering
         let mut peers = self
@@ -259,18 +260,24 @@ impl PeerDb {
             .peers
             .iter()
             .flat_map(|(addr, stats)| {
-                let last_success = stats.handshake.last_success?;
-                if now.signed_duration_since(last_success) > delta {
-                    return None;
+                if let Some(delta) = delta {
+                    let last_success = stats.handshake.last_success?;
+                    if now.signed_duration_since(last_success) > delta {
+                        return None;
+                    }
                 }
-                Some(addr.clone())
+                Some(addr)
             })
             .collect::<Vec<_>>();
 
         fastrand::shuffle(&mut peers);
 
         // TODO: make this smarter
-        peers.into_iter().take(PEERDB_SAMPLE_SIZE).collect()
+        peers
+            .into_iter()
+            .take(PEERDB_SAMPLE_SIZE)
+            .cloned()
+            .collect()
     }
 
     /// Remove old peers that both:
