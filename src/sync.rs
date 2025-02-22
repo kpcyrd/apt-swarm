@@ -294,16 +294,14 @@ pub async fn sync_yield<
                 }
             }
             Query::Pex => {
+                let mut buf = String::new();
                 if let Some(peerdb) = &peerdb {
-                    let mut buf = String::new();
                     for addr in peerdb.sample(PEX_MAX_SUCCESS_AGE).await? {
                         buf += &format!("{addr}\n");
                     }
-                    tx.write_all(format!(":{}\n", buf.len()).as_bytes()).await?;
-                    tx.write_all(buf.as_bytes()).await?;
-                } else {
-                    tx.write_all(b":0\n").await?;
                 }
+                tx.write_all(format!(":{}\n", buf.len()).as_bytes()).await?;
+                tx.write_all(buf.as_bytes()).await?;
             }
             Query::Unknown(data) => {
                 debug!("Received unknown command from network: {data:?}");
