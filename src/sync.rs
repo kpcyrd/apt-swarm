@@ -1,6 +1,7 @@
 use crate::db::{Database, DatabaseClient};
 use crate::errors::*;
 use crate::keyring::Keyring;
+use crate::p2p::peerdb;
 use crate::signed::Signed;
 use bstr::BStr;
 use futures::StreamExt;
@@ -237,6 +238,7 @@ pub async fn sync_yield<
     W: AsyncWrite + Unpin,
 >(
     db: &mut D,
+    peerdb: Option<peerdb::Client>,
     rx: R,
     mut tx: W,
     timeout: Option<Duration>,
@@ -289,8 +291,16 @@ pub async fn sync_yield<
                 }
             }
             Query::Pex => {
-                // TODO
-                tx.write_all(b":0\n").await?;
+                if let Some(peerdb) = &peerdb {
+                    let mut buf = String::new();
+                    for addr in peerdb.sample().await? {
+                        buf += &format!("{addr}\n");
+                    }
+                    tx.write_all(format!(":{}\n", buf.len()).as_bytes()).await?;
+                    tx.write_all(buf.as_bytes()).await?;
+                } else {
+                    tx.write_all(b":0\n").await?;
+                }
             }
             Query::Unknown(data) => {
                 debug!("Received unknown command from network: {data:?}");
@@ -521,7 +531,7 @@ mod tests {
         let (client, server) = tokio::io::duplex(64);
         let (client_rx, client_tx) = tokio::io::split(client);
         let (server_rx, server_tx) = tokio::io::split(server);
-        let task_yield = sync_yield(db_a, server_rx, server_tx, None);
+        let task_yield = sync_yield(db_a, None, server_rx, server_tx, None);
         let task_pull = sync_pull(db_b, keyring, &[], false, client_tx, client_rx);
 
         tokio::select! {

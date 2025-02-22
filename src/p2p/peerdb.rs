@@ -7,12 +7,88 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
+use tokio::time;
 
 const EXPIRE_ERROR_THRESHOLD: usize = 30;
 const EXPIRE_UNLESS_ADVERTISED_SINCE: Duration = Duration::from_secs(3600 * 24 * 14);
+
+const PEERDB_EXPIRE_INTERVAL: Duration = Duration::from_secs(60);
+
+#[derive(Debug)]
+pub enum Req {
+    AddAdvertisedPeers(Vec<PeerAddr>),
+    Sample(mpsc::Sender<Vec<PeerAddr>>),
+    Metric {
+        metric: MetricType,
+        value: MetricValue,
+        addr: PeerAddr,
+    },
+    Write,
+}
+
+#[derive(Debug, Clone)]
+pub struct Client {
+    tx: mpsc::Sender<Req>,
+}
+
+impl Client {
+    pub fn new() -> (Self, mpsc::Receiver<Req>) {
+        let (tx, rx) = mpsc::channel(1024);
+        (Self { tx }, rx)
+    }
+
+    async fn request<T>(&self, req: Req, mut rx: mpsc::Receiver<T>) -> Result<T> {
+        self.tx
+            .send(req)
+            .await
+            .map_err(|_| anyhow!("PeerDb server disconnected"))?;
+        let ret = rx.recv().await.context("PeerDb server disconnected")?;
+        Ok(ret)
+    }
+
+    fn lossy_send(&self, req: Req) {
+        if let Err(TrySendError::Full(req)) = self.tx.try_send(req) {
+            warn!("Discarding peerdb request because backlog is full: {req:?}");
+        }
+    }
+
+    pub fn add_advertised_peers(&self, addrs: Vec<PeerAddr>) {
+        self.lossy_send(Req::AddAdvertisedPeers(addrs));
+    }
+
+    #[inline]
+    pub fn successful(&self, metric: MetricType, addr: PeerAddr) {
+        self.lossy_send(Req::Metric {
+            metric,
+            value: MetricValue::Successful,
+            addr,
+        })
+    }
+
+    #[inline]
+    pub fn error(&self, metric: MetricType, addr: PeerAddr) {
+        self.lossy_send(Req::Metric {
+            metric,
+            value: MetricValue::Error,
+            addr,
+        })
+    }
+
+    pub async fn sample(&self) -> Result<Vec<PeerAddr>> {
+        let (tx, rx) = mpsc::channel(1);
+        self.request(Req::Sample(tx), rx).await
+    }
+
+    pub fn write(&self) {
+        self.lossy_send(Req::Write);
+    }
+}
 
 pub fn format_time_opt(time: Option<DateTime<Utc>>) -> Cow<'static, str> {
     if let Some(time) = time {
@@ -34,6 +110,13 @@ pub struct Metric {
 }
 
 impl Metric {
+    pub fn metric(&mut self, value: MetricValue) {
+        match value {
+            MetricValue::Successful => self.successful(),
+            MetricValue::Error => self.error(),
+        }
+    }
+
     pub fn successful(&mut self) {
         self.errors_since = 0;
         let now = Utc::now();
@@ -62,6 +145,18 @@ impl Metric {
     }
 }
 
+#[derive(Debug)]
+pub enum MetricType {
+    Connect,
+    Handshake,
+}
+
+#[derive(Debug)]
+pub enum MetricValue {
+    Successful,
+    Error,
+}
+
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PeerStats {
     #[serde(default)]
@@ -72,6 +167,13 @@ pub struct PeerStats {
 }
 
 impl PeerStats {
+    pub fn metric(&mut self, metric: MetricType, value: MetricValue) {
+        match metric {
+            MetricType::Connect => self.connect.metric(value),
+            MetricType::Handshake => self.handshake.metric(value),
+        }
+    }
+
     pub fn expired(&self, now: DateTime<Utc>) -> bool {
         // only remove peers that have been advertised, but not recently
         let Some(last_advertised) = self.last_advertised else {
@@ -210,6 +312,39 @@ impl PeerDb {
 
         Ok(())
     }
+}
+
+pub async fn spawn(mut peerdb: PeerDb, mut rx: mpsc::Receiver<Req>) -> Result<Infallible> {
+    let mut interval = time::interval(PEERDB_EXPIRE_INTERVAL);
+
+    loop {
+        tokio::select! {
+            req = rx.recv() => {
+                let Some(req) = req else { break };
+                match req {
+                    Req::AddAdvertisedPeers(addrs) => {
+                        peerdb.add_advertised_peers(&addrs);
+                        peerdb.write().await?;
+                    }
+                    Req::Sample(tx) => {
+                        let sample = peerdb.sample();
+                        tx.send(sample).await.ok();
+                    }
+                    Req::Metric { metric, value, addr } => {
+                        let (peer, _new) = peerdb.add_peer(addr);
+                        peer.metric(metric, value);
+                    }
+                    Req::Write => peerdb.write().await?,
+                }
+            }
+            _ = interval.tick() => {
+                if peerdb.expire_old_peers(Utc::now()) {
+                    peerdb.write().await?;
+                }
+            }
+        }
+    }
+    bail!("PeerDb channel has been closed");
 }
 
 #[cfg(test)]

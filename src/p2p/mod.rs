@@ -67,6 +67,9 @@ pub async fn spawn(
     let irc_tx = cfg!(feature = "irc").then(|| irc_tx);
     let peerdb = PeerDb::read(&config).await?;
 
+    let (peerdb_tx, peerdb_rx) = peerdb::Client::new();
+    set.spawn(async move { peerdb::spawn(peerdb, peerdb_rx).await });
+
     if !p2p.no_bind {
         for addr in p2p.bind {
             let db_client = db_client.clone();
@@ -94,7 +97,10 @@ pub async fn spawn(
             let listener = socket.listen(P2P_SYNC_PORT_BACKLOG)?;
 
             debug!("Listening on address: {addr:?}");
-            set.spawn(async move { sync::spawn_sync_server(&db_client, listener).await });
+            let peerdb_tx = peerdb_tx.clone();
+            set.spawn(
+                async move { sync::spawn_sync_server(&db_client, peerdb_tx, listener).await },
+            );
         }
     }
 
@@ -127,9 +133,9 @@ pub async fn spawn(
     }
 
     let (peering_tx, peering_rx) = mpsc::channel(1024);
-    set.spawn(
-        async move { peering::spawn(&mut db_client, keyring, peerdb, proxy, peering_rx).await },
-    );
+    set.spawn(async move {
+        peering::spawn(&mut db_client, keyring, peerdb_tx, proxy, peering_rx).await
+    });
 
     #[cfg(feature = "irc")]
     if !p2p.no_bootstrap && !p2p.irc.no_irc {
