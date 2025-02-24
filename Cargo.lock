@@ -192,6 +192,7 @@ dependencies = [
  "lz4_flex",
  "memchr",
  "num-format",
+ "pledge",
  "reqwest",
  "sequoia-openpgp",
  "serde",
@@ -3102,6 +3103,15 @@ name = "pkg-config"
 version = "0.3.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "953ec861398dccce10c670dfeaf3ec4911ca479e9c02154b3a215178c5f566f2"
+
+[[package]]
+name = "pledge"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "252599417b7d9a43b7fdc63dd790b0848666a8910b2ebe1a25118309c3c981e5"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "polyval"
