@@ -20,6 +20,10 @@ use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt};
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    #[cfg(target_os = "openbsd")]
+    pledge::pledge("stdio dns inet rpath wpath cpath flock unix", "")
+        .context("Failed to setup pledge sandbox")?;
+
     let args = Args::parse();
 
     let log_level = match (args.quiet, args.verbose) {
