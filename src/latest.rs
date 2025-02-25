@@ -37,13 +37,24 @@ pub fn extract_date_and_attachment(mut data: &[u8]) -> Option<(DateTime<Utc>, &[
     Some((date?, attachment))
 }
 
-fn update_latest(latest: &mut Option<Latest>, key: Vec<u8>, bytes: Vec<u8>) -> Result<()> {
+fn update_latest(
+    latest: &mut Option<Latest>,
+    key: Vec<u8>,
+    bytes: Vec<u8>,
+    max_allowed_datetime: DateTime<Utc>,
+) -> Result<()> {
     let (signed, _trailing) = Signed::from_bytes(&bytes)?;
     let content = signed.content;
 
     let Some((date, attachment)) = extract_date_and_attachment(&content) else {
         return Ok(());
     };
+
+    if date > max_allowed_datetime {
+        let key = String::from_utf8_lossy(&key);
+        warn!("Skipping document with date from the future: {date:?}, {key}");
+        return Ok(());
+    }
 
     let idx = content.len() - attachment.len();
     let new = Some((date, key, bytes, content, idx));
@@ -58,7 +69,11 @@ fn update_latest(latest: &mut Option<Latest>, key: Vec<u8>, bytes: Vec<u8>) -> R
     Ok(())
 }
 
-pub async fn find(db: &Database, fp: Fingerprint) -> Result<Option<Latest>> {
+pub async fn find(
+    db: &Database,
+    fp: Fingerprint,
+    max_allowed_datetime: DateTime<Utc>,
+) -> Result<Option<Latest>> {
     let prefix = format!("{fp}/");
     let stream = db.scan_values(prefix.as_bytes());
 
@@ -67,7 +82,7 @@ pub async fn find(db: &Database, fp: Fingerprint) -> Result<Option<Latest>> {
     tokio::pin!(stream);
     while let Some(item) = stream.next().await {
         let (key, value) = item.context("Failed to read from database (scan-latest)")?;
-        update_latest(&mut latest, key, value)?;
+        update_latest(&mut latest, key, value, max_allowed_datetime)?;
     }
 
     Ok(latest)
@@ -154,10 +169,8 @@ Commit: 07c76667ce66d38cf08bf1e331256d22d338b2a1
         );
     }
 
-    #[test]
-    fn test_datetime_tie() {
-        let data = [
-            "-----BEGIN PGP SIGNED MESSAGE-----
+    const RELEASE_DATA: &[&[u8]] = &[
+        b"-----BEGIN PGP SIGNED MESSAGE-----
 
 Origin: TorProject
 Suite: testing
@@ -216,9 +229,8 @@ tBIlcVdR6VgRIhB4QcMLalZJ60kmy+oFz/UI+rId3bnAN4j3tELqfcBhlaC8aLDi
 v34DhYj76SPDEB4BdO8q0byuf0Smlw==
 =93Mo
 -----END PGP SIGNATURE-----
-"
-            .as_bytes(),
-            "-----BEGIN PGP SIGNED MESSAGE-----
+",
+        b"-----BEGIN PGP SIGNED MESSAGE-----
 
 Origin: TorProject
 Suite: testing
@@ -277,9 +289,8 @@ EDMZ1vmPtHw4Hg24YGPC2OOzn2bUIb8TzQ3grbvc0BuvjokbPvZOG5j2jMEJjb+3
 RkvVS4tolFfLOk8EQrCD7CdxxLqvZw==
 =Ea8d
 -----END PGP SIGNATURE-----
-"
-            .as_bytes(),
-            "-----BEGIN PGP SIGNED MESSAGE-----
+",
+        b"-----BEGIN PGP SIGNED MESSAGE-----
 
 Origin: TorProject
 Suite: stable
@@ -338,9 +349,8 @@ StzttG8ektIx5lojv0FUUE94NQyF0uKtTqB0RUooTzlV/qLEczv8W9ra6kk2AJuD
 VdqlFDMGH3w/JSHSz1UrespC1RjtMw==
 =TUnR
 -----END PGP SIGNATURE-----
-"
-            .as_bytes(),
-            "-----BEGIN PGP SIGNED MESSAGE-----
+",
+        b"-----BEGIN PGP SIGNED MESSAGE-----
 
 Origin: TorProject
 Suite: unstable
@@ -399,9 +409,8 @@ zD8TJGKfNwI7ExNiR9+Cfw/12QnE2jhuadKzDKHS5WI+qJArfFZR+m1H/seJnZnG
 b5XduXB/PK6BAcdfR9AFIgRwnvGoWg==
 =6F6z
 -----END PGP SIGNATURE-----
-"
-            .as_bytes(),
-            "-----BEGIN PGP SIGNED MESSAGE-----
+",
+        b"-----BEGIN PGP SIGNED MESSAGE-----
 
 Origin: TorProject
 Suite: unstable
@@ -460,9 +469,8 @@ JCGaSpnOBrFV5UwPuX+6k5J17cuF9c/d0E5rLzGnLiaYxl9Jk9deu/muvGKME/jk
 xmfGz8KEqUZylajBN7f6JfhPFpL1ZA==
 =sS4f
 -----END PGP SIGNATURE-----
-"
-            .as_bytes(),
-            "-----BEGIN PGP SIGNED MESSAGE-----
+",
+        b"-----BEGIN PGP SIGNED MESSAGE-----
 
 Origin: TorProject
 Suite: testing
@@ -521,9 +529,8 @@ r7rT4MFuHC78HX8+Wvh8Oq8WWFj/eL/YZmVskDO3HISThE21N3DkDzRuu1Fxg4/m
 GVTwJIeTkG0B0NTYBrIpMgC9MyQQhQ==
 =7brN
 -----END PGP SIGNATURE-----
-"
-            .as_bytes(),
-            "-----BEGIN PGP SIGNED MESSAGE-----
+",
+        b"-----BEGIN PGP SIGNED MESSAGE-----
 
 Origin: TorProject
 Suite: stable
@@ -582,23 +589,55 @@ t96GZIs+oOO03g7xqtJc9G67fULuo4TycW70P9yFk5A/+a0m0/ovWuvvjode9iDM
 hhRmafsYupear5ln4kdTQgJhH7k9zw==
 =VXJQ
 -----END PGP SIGNATURE-----
-"
-            .as_bytes(),
-        ];
+",
+    ];
 
+    #[test]
+    fn test_datetime_tie() {
         let mut latest = None;
-        for bytes in data {
+        for bytes in RELEASE_DATA {
             let key = CryptoHash::calculate(bytes);
-            update_latest(&mut latest, key.0.into_bytes(), bytes.to_vec()).unwrap();
+            update_latest(
+                &mut latest,
+                key.0.into_bytes(),
+                bytes.to_vec(),
+                DateTime::<Utc>::MAX_UTC,
+            )
+            .unwrap();
         }
         assert_eq!(
             latest,
             Some((
                 Utc.with_ymd_and_hms(2025, 2, 14, 11, 28, 1).unwrap(),
                 "sha256:c4dde6759a31026a6a2b8d3a72dbd8290d0b831568d409ccf51660cdb52bf055".into(),
-                data[3].to_vec(),
-                Signed::from_bytes(data[3]).unwrap().0.content,
+                RELEASE_DATA[3].to_vec(),
+                Signed::from_bytes(RELEASE_DATA[3]).unwrap().0.content,
                 2986,
+            ))
+        );
+    }
+
+    #[test]
+    fn test_latest_datetime_capped() {
+        let mut latest = None;
+        for bytes in RELEASE_DATA {
+            let key = CryptoHash::calculate(bytes);
+            update_latest(
+                &mut latest,
+                key.0.into_bytes(),
+                bytes.to_vec(),
+                Utc.with_ymd_and_hms(2025, 1, 1, 1, 1, 1).unwrap(),
+            )
+            .unwrap();
+        }
+        assert_eq!(
+            latest,
+            Some((
+                Utc.with_ymd_and_hms(2024, 11, 15, 11, 28, 1).unwrap(),
+                "sha256:0204f8c76d22ae29164c18e5cdb615e9985b562f7d8d0c9a9e963e2076ab15e1".into(),
+                RELEASE_DATA[0].to_vec(),
+                Signed::from_bytes(RELEASE_DATA[0]).unwrap().0.content,
+                2988,
             ))
         );
     }

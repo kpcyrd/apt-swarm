@@ -10,6 +10,7 @@ use apt_swarm::p2p;
 use apt_swarm::plumbing;
 use apt_swarm::signed::Signed;
 use apt_swarm::sync;
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
@@ -123,8 +124,14 @@ async fn main() -> Result<()> {
             let config = config?;
             let db = Database::open_directly(&config, AccessMode::Relaxed).await?;
 
+            let max_allowed_datetime = if latest.allow_future_dates {
+                DateTime::<Utc>::MAX_UTC
+            } else {
+                Utc::now()
+            };
+
             if let Some((date, mut key, signed, content, idx)) =
-                latest::find(&db, latest.fingerprint).await?
+                latest::find(&db, latest.fingerprint, max_allowed_datetime).await?
             {
                 let mut stdout = io::stdout();
                 let value: Cow<'_, [u8]> = if latest.key {

@@ -154,6 +154,9 @@ pub struct Latest {
     /// Print only the attachment (everything after the first empty line)
     #[arg(short = 'A', long, group = "print")]
     pub attachment: bool,
+    /// Permit dates from the future
+    #[arg(short = 'F', long)]
+    pub allow_future_dates: bool,
 }
 
 /// List hashes of all known releases
