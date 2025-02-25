@@ -101,6 +101,7 @@ pub enum SubCommand {
     Import(Import),
     Export(Export),
     Fetch(Fetch),
+    Latest(Latest),
     Ls(Ls),
     Keyring(Keyring),
     Pull(Pull),
@@ -131,6 +132,31 @@ pub struct Fetch {
     /// Number of concurrent requests
     #[arg(short = 'j', long)]
     pub concurrency: Option<usize>,
+}
+
+/// Query the latest release for a given key
+#[derive(Debug, Parser)]
+pub struct Latest {
+    /// The signing key to query
+    pub fingerprint: sequoia_openpgp::Fingerprint,
+    /// Print only the key
+    #[arg(short = 'K', long, group = "print")]
+    pub key: bool,
+    /// Print only the date
+    #[arg(short = 'D', long, group = "print")]
+    pub date: bool,
+    /// Print only the body (with the signature stripped)
+    #[arg(short = 'B', long, group = "print")]
+    pub body: bool,
+    /// Print only the header (everything before the first empty line)
+    #[arg(short = 'H', long, group = "print")]
+    pub header: bool,
+    /// Print only the attachment (everything after the first empty line)
+    #[arg(short = 'A', long, group = "print")]
+    pub attachment: bool,
+    /// Permit dates from the future
+    #[arg(short = 'F', long)]
+    pub allow_future_dates: bool,
 }
 
 /// List hashes of all known releases

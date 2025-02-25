@@ -4,17 +4,20 @@ use apt_swarm::db::{AccessMode, Database, DatabaseClient};
 use apt_swarm::errors::*;
 use apt_swarm::fetch;
 use apt_swarm::keyring::Keyring;
+use apt_swarm::latest;
 use apt_swarm::net;
 use apt_swarm::p2p;
 use apt_swarm::plumbing;
 use apt_swarm::signed::Signed;
 use apt_swarm::sync;
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use colored::Colorize;
 use env_logger::Env;
 use futures::StreamExt;
 use num_format::{Locale, ToFormattedString};
 use sequoia_openpgp::KeyHandle;
+use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt};
 
@@ -99,6 +102,8 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // https://github.com/tokio-rs/tokio/issues/7174
+            stdout.flush().await?;
         }
         SubCommand::Fetch(fetch) => {
             let config = config?;
@@ -114,6 +119,41 @@ async fn main() -> Result<()> {
                 args.proxy,
             )
             .await?;
+        }
+        SubCommand::Latest(latest) => {
+            let config = config?;
+            let db = Database::open_directly(&config, AccessMode::Relaxed).await?;
+
+            let max_allowed_datetime = if latest.allow_future_dates {
+                DateTime::<Utc>::MAX_UTC
+            } else {
+                Utc::now()
+            };
+
+            if let Some((date, mut key, signed, content, idx)) =
+                latest::find(&db, latest.fingerprint, max_allowed_datetime).await?
+            {
+                let mut stdout = io::stdout();
+                let value: Cow<'_, [u8]> = if latest.key {
+                    key.push(b'\n');
+                    Cow::Owned(key)
+                } else if latest.date {
+                    let mut date = date.to_rfc3339();
+                    date.push('\n');
+                    Cow::Owned(date.into_bytes())
+                } else if latest.body {
+                    Cow::Borrowed(&content)
+                } else if latest.header {
+                    Cow::Borrowed(&content[..idx])
+                } else if latest.attachment {
+                    Cow::Borrowed(&content[idx..])
+                } else {
+                    Cow::Borrowed(&signed)
+                };
+                stdout.write_all(&value).await?;
+                // https://github.com/tokio-rs/tokio/issues/7174
+                stdout.flush().await?;
+            }
         }
         SubCommand::Ls(ls) => {
             let config = config?;
@@ -141,6 +181,8 @@ async fn main() -> Result<()> {
                 stdout.write_all(&hash).await?;
                 stdout.write_all(b"\n").await?;
             }
+            // https://github.com/tokio-rs/tokio/issues/7174
+            stdout.flush().await?;
 
             if ls.count {
                 println!("{count}");
