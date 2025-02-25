@@ -4,6 +4,7 @@ use apt_swarm::db::{AccessMode, Database, DatabaseClient};
 use apt_swarm::errors::*;
 use apt_swarm::fetch;
 use apt_swarm::keyring::Keyring;
+use apt_swarm::latest;
 use apt_swarm::net;
 use apt_swarm::p2p;
 use apt_swarm::plumbing;
@@ -15,6 +16,7 @@ use env_logger::Env;
 use futures::StreamExt;
 use num_format::{Locale, ToFormattedString};
 use sequoia_openpgp::KeyHandle;
+use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt};
 
@@ -114,6 +116,35 @@ async fn main() -> Result<()> {
                 args.proxy,
             )
             .await?;
+        }
+        SubCommand::Latest(latest) => {
+            let config = config?;
+            let db = Database::open_directly(&config, AccessMode::Relaxed).await?;
+
+            if let Some((date, mut key, signed, content, idx)) =
+                latest::find(&db, latest.fingerprint).await?
+            {
+                let mut stdout = io::stdout();
+                let value: Cow<'_, [u8]> = if latest.key {
+                    key.push(b'\n');
+                    Cow::Owned(key)
+                } else if latest.date {
+                    let mut date = date.to_rfc3339();
+                    date.push('\n');
+                    Cow::Owned(date.into_bytes())
+                } else if latest.body {
+                    Cow::Borrowed(&content)
+                } else if latest.header {
+                    Cow::Borrowed(&content[..idx])
+                } else if latest.attachment {
+                    Cow::Borrowed(&content[idx..])
+                } else {
+                    Cow::Borrowed(&signed)
+                };
+                stdout.write_all(&value).await?;
+                // https://github.com/tokio-rs/tokio/issues/7174
+                stdout.flush().await?;
+            }
         }
         SubCommand::Ls(ls) => {
             let config = config?;
