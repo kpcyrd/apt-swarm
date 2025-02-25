@@ -148,8 +148,11 @@ apt-swarm can't detect network-partitioning attacks and doesn't intend to.
 
 ## Trivia
 
-As part of this project, a parser bug was identified in Sequoia OpenPGP in 2023
-through fuzzing, as documented in [this issue](https://gitlab.com/sequoia-pgp/sequoia/-/issues/1005).
+As part of this project, a [bug causing the pgp parser to
+crash](https://gitlab.com/sequoia-pgp/sequoia/-/issues/1005) was identified in
+Sequoia OpenPGP in 2023 through fuzzing. A bug that could in some cases lead
+to [silent data loss](https://github.com/tokio-rs/tokio/issues/7174) was
+identified in tokio in 2025.
 
 ## Funding
 

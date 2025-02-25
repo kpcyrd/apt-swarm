@@ -103,6 +103,8 @@ pub async fn run(
                     }
                 }
             }
+            // https://github.com/tokio-rs/tokio/issues/7174
+            stdout.flush().await?;
         }
         Plumbing::Fetch(fetch) => {
             let client = fetch::client(proxy)?;
@@ -115,6 +117,8 @@ pub async fn run(
             while let Some(item) = stream.next().await {
                 stdout.write_all(&item?).await?;
             }
+            // https://github.com/tokio-rs/tokio/issues/7174
+            stdout.flush().await?;
         }
         Plumbing::Fingerprint(_fingerprint) => {
             let mut buf = Vec::new();
@@ -151,7 +155,10 @@ pub async fn run(
 
             if query.batch {
                 let (index, _) = db.batch_index_from_scan(&mut q).await?;
-                index.write_to(io::stdout()).await?;
+                let mut stdout = io::stdout();
+                index.write_to(&mut stdout).await?;
+                // https://github.com/tokio-rs/tokio/issues/7174
+                stdout.flush().await?;
             } else {
                 let (index, counter) = db.index_from_scan(&q).await?;
 
@@ -226,7 +233,10 @@ pub async fn run(
                 let signed = git::convert(git.kind, &buf)?;
                 let normalized = signed.to_clear_signed()?;
 
-                io::stdout().write_all(&normalized).await?;
+                let mut stdout = io::stdout();
+                stdout.write_all(&normalized).await?;
+                // https://github.com/tokio-rs/tokio/issues/7174
+                stdout.flush().await?;
             }
         }
         #[cfg(feature = "git")]
@@ -267,6 +277,8 @@ pub async fn run(
                     stdout.write_all(&normalized).await?;
                 }
             }
+            // https://github.com/tokio-rs/tokio/issues/7174
+            stdout.flush().await?;
         }
         Plumbing::AttachSig(attach) => {
             let content = fs::read(&attach.content).await.with_context(|| {
@@ -287,6 +299,8 @@ pub async fn run(
                 let mut stdout = io::stdout();
                 let text = signed.to_clear_signed()?;
                 stdout.write_all(&text).await?;
+                // https://github.com/tokio-rs/tokio/issues/7174
+                stdout.flush().await?;
             }
         }
         Plumbing::DnsBootstrap(bootstrap) => {

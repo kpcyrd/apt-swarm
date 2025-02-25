@@ -101,6 +101,8 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // https://github.com/tokio-rs/tokio/issues/7174
+            stdout.flush().await?;
         }
         SubCommand::Fetch(fetch) => {
             let config = config?;
@@ -172,6 +174,8 @@ async fn main() -> Result<()> {
                 stdout.write_all(&hash).await?;
                 stdout.write_all(b"\n").await?;
             }
+            // https://github.com/tokio-rs/tokio/issues/7174
+            stdout.flush().await?;
 
             if ls.count {
                 println!("{count}");
