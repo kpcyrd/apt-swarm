@@ -97,14 +97,16 @@ jobs:
         path: target/${{ matrix.target }}/release/apt-swarm
 
   unit-test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os.target }}
     strategy:
       fail-fast: false
       matrix:
         os:
-          - ubuntu-24.04
-          - macos-latest
-          - windows-latest
+          - target: ubuntu-24.04
+            flags: --examples
+          - target: macos-latest
+            flags: --examples
+          - target: windows-latest
         features:
           - name: default
           - name: none
@@ -129,9 +131,9 @@ jobs:
         restore-keys: ${{ runner.os }}-cargo-debug-
 
     - name: Run clippy
-      run: cargo clippy --lib --bins --examples --tests ${{ matrix.features.flags }} -- -D warnings
+      run: cargo clippy --lib --bins --tests ${{ matrix.os.flags }} ${{ matrix.features.flags }} -- -D warnings
     - name: Run tests
-      run: cargo test --verbose ${{ matrix.features.flags }}
+      run: cargo test --verbose --lib --bins --tests ${{ matrix.features.flags }}
 
   fmt:
     runs-on: ubuntu-24.04
