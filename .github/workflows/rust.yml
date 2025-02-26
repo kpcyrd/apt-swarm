@@ -129,7 +129,7 @@ jobs:
         restore-keys: ${{ runner.os }}-cargo-debug-
 
     - name: Run clippy
-      run: cargo clippy --all ${{ matrix.features.flags }} -- -D warnings
+      run: cargo clippy --lib --bins --examples --tests ${{ matrix.features.flags }} -- -D warnings
     - name: Run tests
       run: cargo test --verbose ${{ matrix.features.flags }}
 
