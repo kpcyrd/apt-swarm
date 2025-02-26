@@ -79,7 +79,7 @@ SHA256:
     };
 
     if let Ok(out) = signed.canonicalize(Some(&KEYRING)) {
-        if out.len() > 0 {
+        if !out.is_empty() {
             panic!("Found valid signature variation");
         }
     }
