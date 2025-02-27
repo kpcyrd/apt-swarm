@@ -97,19 +97,13 @@ async fn update_if_needed(exe: &Path, fp: &str, current: &str) -> Result<Option<
     Ok(Some(new_sha256))
 }
 
-#[tokio::main]
-async fn main() -> Result<Infallible> {
-    let args = Args::parse();
-    env_logger::init_from_env(Env::default().default_filter_or(match args.verbose {
-        0 => "info",
-        _ => "debug",
-    }));
-
-    debug!("Reading current exe...");
-    let mut current_exe = sha256(&fs::read(&args.exe).await?);
+async fn run(
+    args: &Args,
+    mut current_exe: String,
+    child_slot: &mut Option<process::Child>,
+) -> Result<Infallible> {
     info!("Started with current exe = {current_exe}");
 
-    let mut child_slot: Option<process::Child> = None;
     let mut interval = time::interval(LATEST_CHECK_INTERVAL);
     interval.reset();
     loop {
@@ -121,7 +115,7 @@ async fn main() -> Result<Infallible> {
             }
         }
 
-        let child = if let Some(child) = &mut child_slot {
+        let child = if let Some(child) = child_slot {
             child
         } else {
             let mut argv = vec!["p2p"];
@@ -138,9 +132,28 @@ async fn main() -> Result<Infallible> {
         tokio::select! {
             exit = child.wait() => {
                 info!("Background child has exited: {exit:?}");
-                child_slot = None;
+                *child_slot = None;
             }
             _ = interval.tick() => (),
         }
     }
+}
+
+#[tokio::main]
+async fn main() -> Result<Infallible> {
+    let args = Args::parse();
+    env_logger::init_from_env(Env::default().default_filter_or(match args.verbose {
+        0 => "info",
+        _ => "debug",
+    }));
+
+    debug!("Reading current exe...");
+    let current_exe = sha256(&fs::read(&args.exe).await?);
+
+    let mut child_slot = None;
+    let exit = run(&args, current_exe, &mut child_slot).await;
+    if let Some(mut child) = child_slot {
+        child.kill().await.ok();
+    }
+    exit
 }
