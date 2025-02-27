@@ -33,6 +33,7 @@ impl EasedInterval {
 mod tests {
     use super::*;
 
+    // this test is somewhat flakey, don't run it by default
     #[ignore]
     #[tokio::test]
     async fn test_eased_interval() {
