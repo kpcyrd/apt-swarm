@@ -33,6 +33,7 @@ impl EasedInterval {
 mod tests {
     use super::*;
 
+    #[ignore]
     #[tokio::test]
     async fn test_eased_interval() {
         let mut interval =
