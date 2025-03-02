@@ -75,6 +75,11 @@ async fn random_suffix(path: &Path) -> Result<(PathBuf, fs::File)> {
 
 async fn update_if_needed(exe: &Path, fp: &str, current: &str) -> Result<Option<String>> {
     let latest_exe = query_latest_exe(exe, fp).await?;
+    if latest_exe.is_empty() {
+        debug!("Could not find any exe yet, keep using what we have for now");
+        return Ok(None);
+    }
+
     let new_sha256 = sha256(&latest_exe);
     if new_sha256 == current {
         debug!("Already at most recent exe");
