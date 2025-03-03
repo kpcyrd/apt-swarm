@@ -23,7 +23,7 @@ onions = ["arti-client", "safelog", "tor-cell", "tor-config", "tor-hsservice", "
 [dependencies]
 advisory-lock = "0.3.0"
 anyhow = "1.0.68"
-arti-client = { version = "0.27.0", optional = true, default-features = false, features = ["anyhow", "ephemeral-keystore", "onion-service-client", "onion-service-service", "rustls", "static-sqlite", "tokio"] }
+arti-client = { version = "0.28.0", optional = true, default-features = false, features = ["anyhow", "ephemeral-keystore", "onion-service-client", "onion-service-service", "rustls", "static-sqlite", "tokio"] }
 async-stream = "0.3"
 async-trait = "0.1.64"
 bstr = { version = "1.2.0", features = ["serde"] }
@@ -61,12 +61,12 @@ socket2 = "0.5"
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "io-util", "io-std", "fs", "process", "net"] }
 tokio-socks = "0.5.1"
 toml = "0.8"
-tor-cell = { version = "0.27", optional = true, default-features = false }
-tor-config = { version = "0.27", default-features = false, optional = true }
-tor-hsservice = { version = "0.27", optional = true, default-features = false }
-tor-keymgr = { version = "0.27", default-features = false, optional = true }
-tor-proto = { version = "0.27", optional = true, default-features = false }
-tor-rtcompat = { version = "0.27", optional = true, default-features = false }
+tor-cell = { version = "0.28", optional = true, default-features = false }
+tor-config = { version = "0.28", default-features = false, optional = true }
+tor-hsservice = { version = "0.28", optional = true, default-features = false }
+tor-keymgr = { version = "0.28", default-features = false, optional = true }
+tor-proto = { version = "0.28", optional = true, default-features = false }
+tor-rtcompat = { version = "0.28", optional = true, default-features = false }
 tracing = { version = "0.1.41", optional = true, default-features = false, features = ["log"] }
 url = "2.5"
 
