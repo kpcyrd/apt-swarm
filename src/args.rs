@@ -207,6 +207,9 @@ pub struct P2p {
     /// Do not actively fetch updates from the configured repositories
     #[arg(long)]
     pub no_fetch: bool,
+    #[cfg(feature = "onions")]
+    #[command(flatten)]
+    pub onions: P2pOnions,
     /// Do not bind a sync port for p2p traffic
     #[arg(long)]
     pub no_bind: bool,
@@ -245,6 +248,24 @@ pub struct P2pDns {
     pub dns: Vec<String>,
 }
 
+#[cfg(feature = "onions")]
+#[derive(Debug, Parser)]
+pub struct P2pOnions {
+    /// Setup a hidden service and support outbound onion connections
+    #[arg(long = "onions")]
+    pub enabled: bool,
+    #[command(flatten)]
+    pub options: OnionOptions,
+}
+
+#[cfg(feature = "onions")]
+#[derive(Debug, Parser)]
+pub struct OnionOptions {
+    /// Disable log scrubbing of e.g. Tor network IPs we're connecting to
+    #[arg(long)]
+    pub onions_log_sensitive_information: bool,
+}
+
 /// Access to low-level features
 #[derive(Debug, Subcommand)]
 pub enum Plumbing {
@@ -265,10 +286,16 @@ pub enum Plumbing {
     GitScrape(GitScrape),
     Index(Index),
     Migrate(Migrate),
+    #[cfg(feature = "onions")]
+    OnionConnect(OnionConnect),
+    #[cfg(feature = "onions")]
+    OnionService(OnionService),
     Paths(Paths),
     PeerdbAdd(PeerdbAdd),
     PeerdbList(PeerdbList),
     PeerdbGc(PeerdbGc),
+    #[cfg(feature = "onions")]
+    ResetArti(ResetArti),
     SyncPull(SyncPull),
     SyncYield(SyncYield),
 }
@@ -390,6 +417,22 @@ pub struct Index {
 #[derive(Debug, Parser)]
 pub struct Migrate {}
 
+#[cfg(feature = "onions")]
+/// Connect to hidden service
+#[derive(Debug, Parser)]
+pub struct OnionConnect {
+    pub onion: String,
+    pub port: u16,
+}
+
+#[cfg(feature = "onions")]
+/// Bind and run hidden service
+#[derive(Debug, Parser)]
+pub struct OnionService {
+    #[command(flatten)]
+    pub options: OnionOptions,
+}
+
 /// Print configured paths
 #[derive(Debug, Parser)]
 pub struct Paths {}
@@ -410,6 +453,11 @@ pub struct PeerdbList {
 /// Remove old peerdb entries
 #[derive(Debug, Parser)]
 pub struct PeerdbGc {}
+
+#[cfg(feature = "onions")]
+/// Delete all data related to the Tor network
+#[derive(Debug, Parser)]
+pub struct ResetArti {}
 
 /// Fetch all available signatures over stdio (use with sync-yield)
 #[derive(Debug, Parser)]

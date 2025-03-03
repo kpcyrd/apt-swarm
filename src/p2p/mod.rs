@@ -4,6 +4,8 @@ pub mod dns;
 pub mod fetch;
 #[cfg(feature = "irc")]
 pub mod irc;
+#[cfg(feature = "onions")]
+pub mod onions;
 pub mod peerdb;
 pub mod peering;
 pub mod proto;
@@ -18,6 +20,7 @@ use crate::keyring::Keyring;
 use crate::p2p::peerdb::PeerDb;
 use socket2::{Domain, Socket, Type};
 use std::convert::Infallible;
+use std::mem;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::net::TcpSocket;
@@ -44,13 +47,13 @@ pub async fn random_jitter(jitter: Duration) {
 pub async fn spawn(
     db: Database,
     keyring: Keyring,
-    config: Config,
+    mut config: Config,
     p2p: P2p,
     proxy: Option<SocketAddr>,
 ) -> Result<Infallible> {
     let mut set = JoinSet::new();
 
-    let (mut db_server, mut db_client) = DatabaseServer::new(db);
+    let (mut db_server, db_client) = DatabaseServer::new(db);
     set.spawn(async move {
         db_server.run().await?;
         bail!("Database server has terminated");
@@ -107,7 +110,7 @@ pub async fn spawn(
     if !p2p.no_fetch {
         let mut db_client = db_client.clone();
         let keyring = keyring.clone();
-        let repositories = config.data.repositories;
+        let repositories = mem::take(&mut config.data.repositories);
         set.spawn(async move {
             fetch::spawn_fetch_timer(
                 &mut db_client,
@@ -132,10 +135,14 @@ pub async fn spawn(
         set.spawn(update_check::spawn_update_check(image, commit));
     }
 
-    let (peering_tx, peering_rx) = mpsc::channel(1024);
-    set.spawn(async move {
-        peering::spawn(&mut db_client, keyring, peerdb_tx, proxy, peering_rx).await
-    });
+    let peering_tx = {
+        let mut db_client = db_client.clone();
+        let (peering_tx, peering_rx) = mpsc::channel(1024);
+        set.spawn(async move {
+            peering::spawn(&mut db_client, keyring, peerdb_tx, proxy, peering_rx).await
+        });
+        peering_tx
+    };
 
     #[cfg(feature = "irc")]
     if !p2p.no_bootstrap && !p2p.irc.no_irc {
@@ -149,6 +156,12 @@ pub async fn spawn(
     // if irc is not enabled, supress an unused variable warning
     #[cfg(not(feature = "irc"))]
     let _ = irc_rx;
+
+    #[cfg(feature = "onions")]
+    if p2p.onions.enabled {
+        let path = config.arti_path()?;
+        set.spawn(async move { onions::spawn(&db_client, path, p2p.onions.options).await });
+    }
 
     info!("Successfully started p2p node...");
     let result = set

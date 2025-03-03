@@ -115,6 +115,8 @@ jobs:
             flags: --no-default-features -F git
           - name: irc
             flags: --no-default-features -F irc
+          - name: onions
+            flags: --no-default-features -F onions
     steps:
     - uses: actions/checkout@v4
 

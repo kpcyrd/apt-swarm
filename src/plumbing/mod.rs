@@ -4,7 +4,7 @@ pub mod update;
 
 use crate::args::{FileOrStdin, Plumbing};
 use crate::config::Config;
-#[cfg(unix)]
+#[cfg(any(unix, feature = "onions"))]
 use crate::db::channel::DatabaseServer;
 use crate::db::header::CryptoHash;
 use crate::db::{AccessMode, Database, DatabaseClient};
@@ -325,7 +325,7 @@ pub async fn run(
             let db_socket_path = config.db_socket_path()?;
 
             tokio::select! {
-                _ = db_server.run() => bail!("Database server has terminated"),
+                Err(err) = db_server.run() => bail!("Database server has terminated: {err:#}"),
                 ret = p2p::db::spawn_unix_db_server(&db_client, db_socket_path) => ret,
             }?;
         }
@@ -382,6 +382,22 @@ pub async fn run(
                 db.write().await?;
             }
         }
+        #[cfg(feature = "onions")]
+        Plumbing::ResetArti(_reset) => {
+            let config = config?;
+            let path = config.arti_path()?;
+            info!("Deleting directory: {path:?}");
+            fs::remove_dir_all(&path)
+                .await
+                .or_else(|err| {
+                    if err.kind() == io::ErrorKind::NotFound {
+                        Ok(())
+                    } else {
+                        Err(err)
+                    }
+                })
+                .with_context(|| anyhow!("Failed to delete directory: {path:?}"))?;
+        }
         Plumbing::Migrate(_migrate) => {
             let config = config?;
             let keyring = Keyring::load(&config)?;
@@ -437,6 +453,25 @@ pub async fn run(
 
             info!("Migration completed, removing migration folder...");
             fs::remove_dir_all(&delete_path).await?;
+        }
+        #[cfg(feature = "onions")]
+        Plumbing::OnionConnect(onion) => {
+            let config = config?;
+            let path = config.arti_path()?;
+            p2p::onions::connect(path, &onion.onion, onion.port).await?;
+        }
+        #[cfg(feature = "onions")]
+        Plumbing::OnionService(onion) => {
+            let config = config?;
+            let db = Database::open_directly(&config, AccessMode::Relaxed).await?;
+            let path = config.arti_path()?;
+
+            let (mut db_server, db_client) = DatabaseServer::new(db);
+
+            tokio::select! {
+                Err(err) = db_server.run() => bail!("Database server has terminated: {err:#}"),
+                ret = p2p::onions::spawn(&db_client, path, onion.options) => ret,
+            }?;
         }
         Plumbing::Fsck(fsck) => {
             let config = config?;

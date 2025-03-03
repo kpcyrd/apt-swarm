@@ -308,6 +308,7 @@ pub async fn sync_yield<
                 tx.write_all(b":0\n").await?;
             }
         }
+        tx.flush().await?;
     }
 
     Ok(())
