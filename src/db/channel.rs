@@ -5,6 +5,7 @@ use crate::signed::Signed;
 use crate::sync;
 use async_trait::async_trait;
 use sequoia_openpgp::Fingerprint;
+use std::convert::Infallible;
 use tokio::sync::mpsc;
 
 pub enum Query {
@@ -32,7 +33,7 @@ impl DatabaseServer {
         (server, client)
     }
 
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(&mut self) -> Result<Infallible> {
         while let Some(msg) = self.rx.recv().await {
             match msg {
                 Query::AddRelease(fp, signed, tx) => {
@@ -57,7 +58,7 @@ impl DatabaseServer {
                 }
             }
         }
-        Ok(())
+        bail!("Database channel has been closed")
     }
 }
 

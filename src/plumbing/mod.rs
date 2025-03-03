@@ -4,7 +4,7 @@ pub mod update;
 
 use crate::args::{FileOrStdin, Plumbing};
 use crate::config::Config;
-#[cfg(unix)]
+#[cfg(any(unix, feature = "onions"))]
 use crate::db::channel::DatabaseServer;
 use crate::db::header::CryptoHash;
 use crate::db::{AccessMode, Database, DatabaseClient};
@@ -325,7 +325,7 @@ pub async fn run(
             let db_socket_path = config.db_socket_path()?;
 
             tokio::select! {
-                _ = db_server.run() => bail!("Database server has terminated"),
+                Err(err) = db_server.run() => bail!("Database server has terminated: {err:#}"),
                 ret = p2p::db::spawn_unix_db_server(&db_client, db_socket_path) => ret,
             }?;
         }
@@ -469,7 +469,7 @@ pub async fn run(
             let (mut db_server, db_client) = DatabaseServer::new(db);
 
             tokio::select! {
-                _ = db_server.run() => bail!("Database server has terminated"),
+                Err(err) = db_server.run() => bail!("Database server has terminated: {err:#}"),
                 ret = p2p::onions::spawn(&db_client, path, onion.options) => ret,
             }?;
         }
