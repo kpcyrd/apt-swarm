@@ -54,15 +54,17 @@ pub fn load(keyring: &[u8]) -> Result<Vec<SigningKey>> {
             subkeys: Vec::new(),
         };
 
-        let p = &NullPolicy::new();
+        let p = unsafe { &NullPolicy::new() };
         for key in cert.keys().with_policy(p, None) {
+            let fingerprint = key.key().fingerprint();
+
             // TODO: we should probably also track and display encryption-only keys, for transparency
             if key.for_signing() {
-                signing_key.register_keyhandles(key.fingerprint());
+                signing_key.register_keyhandles(fingerprint.clone());
             }
 
             signing_key.subkeys.push(Subkey {
-                fingerprint: key.fingerprint(),
+                fingerprint,
                 is_primary: key.primary(),
                 for_authentication: key.for_authentication(),
                 for_certification: key.for_certification(),
