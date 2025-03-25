@@ -194,6 +194,7 @@ dependencies = [
  "num-format",
  "pledge",
  "reqwest",
+ "rustls",
  "sequoia-openpgp",
  "serde",
  "serde_json",
