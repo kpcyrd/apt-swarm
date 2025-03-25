@@ -163,7 +163,7 @@ checksum = "dcfed56ad506cb2c684a14971b8861fdc3baaaae314b9e5f9bb532cbe3ba7a4f"
 
 [[package]]
 name = "apt-swarm"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "advisory-lock",
  "anyhow",
