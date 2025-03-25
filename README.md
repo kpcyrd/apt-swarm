@@ -140,19 +140,23 @@ running this program may use up a lot of disk space on your computer if
 somebody finds a way to bypass the vandalism protection.
 
 There's also the risk of a false-negative, the pgp implementation used by
-apt-get may consider a signature as valid that we consider invalid. If
-apt-swarm considers the signature as invalid it won't accept this release into
-the network and it won't appear in your audit logs.
+apt-get may consider a signature as invalid that we different program considers
+valid. If apt-swarm considers the signature as invalid it won't accept this
+release into the network and it won't appear in your audit logs.
 
 apt-swarm can't detect network-partitioning attacks and doesn't intend to.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=kpcyrd/apt-swarm&type=Date)](https://www.star-history.com/#kpcyrd/apt-swarm&Date)
 
 ## Trivia
 
 As part of this project, a [bug causing the pgp parser to
 crash](https://gitlab.com/sequoia-pgp/sequoia/-/issues/1005) was identified in
-Sequoia OpenPGP in 2023 through fuzzing. A bug that could in some cases lead
-to [silent data loss](https://github.com/tokio-rs/tokio/issues/7174) was
-identified in tokio in 2025.
+Sequoia OpenPGP in 2023 through fuzzing.
+
+A bug that could in some cases lead to [silent data
+loss](https://github.com/tokio-rs/tokio/issues/7174) was identified in Tokio in
+2025.
 
 ## Funding
 
