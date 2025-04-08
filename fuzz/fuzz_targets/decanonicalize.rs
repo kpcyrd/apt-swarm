@@ -5,7 +5,7 @@ use apt_swarm::signed::Signed;
 use libfuzzer_sys::fuzz_target;
 
 lazy_static::lazy_static! {
-    static ref KEYRING: Keyring = Keyring::new(include_bytes!("../../contrib/signal-desktop-keyring.gpg")).unwrap();
+    static ref KEYRING: Keyring = Keyring::new(include_bytes!("../../contrib/signal-desktop-keyring.pgp")).unwrap();
 }
 
 fuzz_target!(|data: &[u8]| {

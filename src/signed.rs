@@ -382,7 +382,7 @@ Aee63sxMlmRBCwC+QKeH
     fn test_check_signature() -> Result<()> {
         let (signed, remaining) = Signed::from_bytes(IN_RELEASE)?;
         assert_eq!(remaining, b"");
-        let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg"))?;
+        let keyring = Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.pgp"))?;
         let canonical = signed.canonicalize(Some(&keyring))?;
         assert_eq!(canonical, &[("DBA36B5181D0C816F630E889D980A17457F6FB06".parse().ok(), Signed {
             content: BString::from(b"Origin: . xenial
@@ -1682,10 +1682,10 @@ EXyj
         let mut keyring = Keyring::default();
 
         keyring.add_keyring(include_bytes!(
-            "../contrib/debian-archive-bullseye-automatic.gpg"
+            "../contrib/debian-archive-bullseye-automatic.pgp"
         ))?;
         keyring.add_keyring(include_bytes!(
-            "../contrib/debian-archive-bullseye-stable.gpg"
+            "../contrib/debian-archive-bullseye-stable.pgp"
         ))?;
 
         let content = b"Origin: Debian

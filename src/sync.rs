@@ -548,7 +548,7 @@ mod tests {
         init();
 
         let keyring =
-            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg")).unwrap();
+            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.pgp")).unwrap();
         let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
         run_sync(&keyring, &mut db_a, &mut db_b).await.unwrap();
 
@@ -560,7 +560,7 @@ mod tests {
         init();
 
         let keyring =
-            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg")).unwrap();
+            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.pgp")).unwrap();
         let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
 
         let data = [
@@ -730,7 +730,7 @@ R4AjBHbzlyIGpU5BGNn3
         init();
 
         let keyring =
-            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.gpg")).unwrap();
+            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.pgp")).unwrap();
         let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
 
         let data = [
