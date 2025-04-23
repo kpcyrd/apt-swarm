@@ -85,7 +85,7 @@ jobs:
       run: sudo apt-get install repro-env
 
     - name: Build
-      run: make
+      run: make ${{ matrix.target }}
 
     - name: Print sha256 of binary
       run: sha256sum target/${{ matrix.target }}/release/apt-swarm
