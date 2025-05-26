@@ -161,13 +161,17 @@ pub enum UrlSource {
 }
 
 impl UrlSource {
-    pub async fn fetch(&self, client: &reqwest::Client) -> Result<Signed> {
+    pub async fn fetch(&self, client: &reqwest::Client) -> Result<Vec<Signed>> {
         match self {
             UrlSource::Url(url) => {
                 let body = Self::fetch_data(client, url).await?;
 
-                let (signed, _remaining) = Signed::from_bytes(&body)
-                    .context("Failed to parse http response as release")?;
+                let signed = Signed::find_all_in_text(&body)
+                    .context("Failed to parse signed message from http response")?;
+
+                if signed.is_empty() {
+                    bail!("Failed to find any signed data in http response");
+                }
 
                 Ok(signed)
             }
@@ -186,10 +190,10 @@ impl UrlSource {
                 let mut signature = Vec::new();
                 reader.read_to_end(&mut signature)?;
 
-                Ok(Signed {
+                Ok(vec![Signed {
                     content: BString::new(content.into()),
                     signature,
-                })
+                }])
             }
         }
     }

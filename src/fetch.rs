@@ -30,8 +30,10 @@ async fn fetch_repository_updates(
             continue;
         };
 
-        for item in signed.canonicalize(keyring.as_ref())? {
-            out.push(item);
+        for signed in signed {
+            for item in signed.canonicalize(keyring.as_ref())? {
+                out.push(item);
+            }
         }
     }
 
