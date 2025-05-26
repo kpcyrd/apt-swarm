@@ -58,9 +58,12 @@ pub async fn fetch_updates<D: DatabaseClient>(
     concurrency: Option<usize>,
     repositories: Vec<Repository>,
     proxy: Option<SocketAddr>,
+    fingerprints: &[sequoia_openpgp::Fingerprint],
 ) -> Result<()> {
     let concurrency = concurrency.unwrap_or(DEFAULT_CONCURRENCY);
-    let mut queue = repositories.into_iter();
+    let mut queue = repositories.into_iter().filter(|repository| {
+        fingerprints.is_empty() || repository.contains_fingerprint(fingerprints)
+    });
     let mut pool = JoinSet::new();
     let client = client(proxy)?;
 
