@@ -132,6 +132,8 @@ pub struct Fetch {
     /// Number of concurrent requests
     #[arg(short = 'j', long)]
     pub concurrency: Option<usize>,
+    /// Only fetch Release files for these keys
+    pub fingerprints: Vec<sequoia_openpgp::Fingerprint>,
 }
 
 /// Query the latest release for a given key

@@ -121,6 +121,7 @@ async fn main() -> Result<()> {
                 fetch.concurrency,
                 config.data.repositories,
                 args.proxy,
+                &fetch.fingerprints,
             )
             .await?;
         }

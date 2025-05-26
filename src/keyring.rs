@@ -61,6 +61,10 @@ impl Keyring {
         }
     }
 
+    pub fn get(&self, fingerprint: &Fingerprint) -> Option<&SigningKey> {
+        self.keys.get(fingerprint)
+    }
+
     pub fn all_fingerprints(&self) -> Vec<Fingerprint> {
         self.keys
             .values()
