@@ -108,13 +108,17 @@ pub async fn spawn(
         let mut db_client = db_client.clone();
         let keyring = keyring.clone();
         let repositories = config.data.repositories;
+
+        let mut announce = config.data.system.announce;
+        announce.extend(p2p.announce);
+
         set.spawn(async move {
             fetch::spawn_fetch_timer(
                 &mut db_client,
                 keyring,
                 repositories,
                 proxy,
-                p2p.announce,
+                announce,
                 irc_tx,
             )
             .await

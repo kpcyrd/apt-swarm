@@ -8,6 +8,7 @@ use sequoia_openpgp::armor;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::io::prelude::*;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
@@ -121,6 +122,8 @@ impl Config {
 
 #[derive(Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct ConfigData {
+    #[serde(default)]
+    pub system: System,
     #[serde(rename = "repository", default)]
     pub repositories: Vec<Repository>,
 }
@@ -135,6 +138,12 @@ impl ConfigData {
         let buf = fs::read_to_string(&path).await?;
         Self::load_config_from_str(&buf)
     }
+}
+
+#[derive(Debug, PartialEq, Default, Clone, Serialize, Deserialize)]
+pub struct System {
+    #[serde(default)]
+    pub announce: Vec<SocketAddr>,
 }
 
 #[derive(Debug, PartialEq, Default, Clone, Serialize, Deserialize)]
@@ -218,6 +227,7 @@ impl UrlSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     const KEYRING: &str = "-----BEGIN PGP PUBLIC KEY BLOCK-----
 
@@ -312,5 +322,43 @@ N+O606NOXLwcmq5KZL0g
 
         // Test with an empty fingerprint list
         assert!(!repo.contains_fingerprint(&[]));
+    }
+
+    #[test]
+    fn test_parse_empty_config() {
+        let buf = "";
+        let config = ConfigData::load_config_from_str(buf).unwrap();
+        assert_eq!(config, ConfigData::default());
+    }
+
+    #[test]
+    fn test_parse_empty_system_config() {
+        let buf = "[system]";
+        let config = ConfigData::load_config_from_str(buf).unwrap();
+        assert_eq!(config, ConfigData::default());
+    }
+
+    #[test]
+    fn test_parse_system_config_announce() {
+        let buf = r#"
+        [system]
+        announce = ["[2001:db8::1]:1337", "192.168.0.1:16169"]
+        "#;
+        let config = ConfigData::load_config_from_str(buf).unwrap();
+        assert_eq!(
+            config,
+            ConfigData {
+                system: System {
+                    announce: vec![
+                        SocketAddr::new(
+                            IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),
+                            1337
+                        ),
+                        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)), 16169),
+                    ],
+                },
+                ..Default::default()
+            }
+        );
     }
 }
