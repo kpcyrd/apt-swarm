@@ -64,7 +64,7 @@ impl Config {
         None
     }
 
-    pub fn apt_swarm_path(&self) -> Result<Cow<PathBuf>> {
+    pub fn apt_swarm_path(&self) -> Result<Cow<'_, PathBuf>> {
         let path = if let Some(path) = &self.data_path {
             Cow::Borrowed(path)
         } else {
