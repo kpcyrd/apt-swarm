@@ -207,7 +207,7 @@ impl BatchIndex {
         self.index.get(key)
     }
 
-    pub fn keys(&self) -> indexmap::map::Keys<String, (String, usize)> {
+    pub fn keys(&self) -> indexmap::map::Keys<'_, String, (String, usize)> {
         self.index.keys()
     }
 
