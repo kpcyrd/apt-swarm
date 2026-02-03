@@ -25,7 +25,7 @@ anyhow = "1.0.68"
 async-stream = "0.3"
 async-trait = "0.1.64"
 bstr = { version = "1.2.0", features = ["serde"] }
-bytes = "1.4.0"
+bytes = "1.11.1"
 # we don't use bzip2 directly, but enable the libbz2-rs-sys feature
 bzip2 = { version = "0.5.1", features = ["libbz2-rs-sys"] }
 chrono = { version = "0.4", default-features = false, features = ["serde", "now"] }
