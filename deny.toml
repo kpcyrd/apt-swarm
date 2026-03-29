@@ -5,6 +5,7 @@
 ignore = [
     #"RUSTSEC-0000-0000",
     { id = "RUSTSEC-2023-0071", reason = "We don't issue signatures" },
+    { id = "RUSTSEC-2025-0134", reason = "https://github.com/aatxe/irc/pull/280" },
 ]
 
 # This section is considered when running `cargo deny check licenses`
