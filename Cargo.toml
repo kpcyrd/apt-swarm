@@ -48,7 +48,7 @@ lru = "0.16"
 lz4_flex = "0.13"
 memchr = "2.5.0"
 num-format = "0.4"
-reqwest = { version = "0.12", features = ["rustls-tls", "socks", "stream"], default-features = false }
+reqwest = { version = "0.13", features = ["rustls", "socks", "stream"], default-features = false }
 rustls = { version = "0.23", default-features = false }
 sequoia-openpgp = { version = "2", default-features = false, features = ["compression", "crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto"] }
 serde = { version = "1.0.152", features = ["derive"] }
