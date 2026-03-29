@@ -22,7 +22,6 @@ allow = [
     "LGPL-2.0-or-later",
     "MIT",
     "MPL-2.0",
-    "OpenSSL",
     "Unicode-3.0",
     "Zlib",
     "bzip2-1.0.6",
