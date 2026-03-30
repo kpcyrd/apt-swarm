@@ -3,6 +3,7 @@ use crate::errors::*;
 use crate::keyring::Keyring;
 use crate::p2p::peerdb;
 use crate::signed::Signed;
+use base16ct::HexDisplay;
 use bstr::BStr;
 use futures::StreamExt;
 use indexmap::{IndexMap, IndexSet};
@@ -239,7 +240,7 @@ pub async fn index_from_scan(db: &Database, query: &TreeQuery) -> Result<(String
         counter += 1;
     }
 
-    let result = hasher.finalize();
+    let result = HexDisplay(&hasher.finalize());
     Ok((format!("sha256:{result:x}"), counter))
 }
 

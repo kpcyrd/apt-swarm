@@ -24,6 +24,7 @@ advisory-lock = "0.3.0"
 anyhow = "1.0.68"
 async-stream = "0.3"
 async-trait = "0.1.64"
+base16ct = "1.0.0"
 bstr = { version = "1.2.0", features = ["serde"] }
 bytes = "1.11.1"
 # we don't use bzip2 directly, but enable the libbz2-rs-sys feature
@@ -53,7 +54,7 @@ rustls = { version = "0.23", default-features = false }
 sequoia-openpgp = { version = "2", default-features = false, features = ["compression", "crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto"] }
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.92"
-sha2 = "0.10.6"
+sha2 = "0.11"
 socket2 = "0.6"
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "io-util", "io-std", "fs", "process", "net"] }
 tokio-socks = "0.5.1"
