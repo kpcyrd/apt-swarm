@@ -1,4 +1,5 @@
 use apt_swarm::errors::*;
+use base16ct::HexDisplay;
 use clap::{ArgAction, Parser};
 use env_logger::Env;
 use sha2::{Digest, Sha256};
@@ -30,7 +31,7 @@ pub struct Args {
 fn sha256(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("sha256:{:x}", hasher.finalize())
+    format!("sha256:{:x}", HexDisplay(&hasher.finalize()))
 }
 
 async fn query_latest_exe(exe: &Path, fp: &str) -> Result<Vec<u8>> {

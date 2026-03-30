@@ -1,4 +1,5 @@
 use crate::errors::*;
+use base16ct::HexDisplay;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
@@ -56,7 +57,7 @@ impl CryptoHash {
     pub fn calculate(bytes: &[u8]) -> Self {
         let mut hasher = Sha256::new();
         hasher.update(bytes);
-        let result = hasher.finalize();
+        let result = HexDisplay(&hasher.finalize());
         CryptoHash(format!("sha256:{result:x}"))
     }
 }
@@ -233,5 +234,17 @@ mod tests {
 
         let encoded = hash.encode().unwrap();
         assert_eq!(encoded, bytes);
+    }
+
+    #[test]
+    fn test_cryptohash_calculate() {
+        let hash = CryptoHash::calculate(b"ohai!");
+        assert_eq!(
+            hash,
+            CryptoHash(
+                "sha256:f66b9e95324778cbc291d16cc30a950a0cacfe1c06e72cd9743d474c5e3e6b99"
+                    .to_string()
+            )
+        );
     }
 }

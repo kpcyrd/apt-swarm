@@ -40,9 +40,9 @@ async fn main() -> Result<()> {
     };
     env_logger::init_from_env(Env::default().default_filter_or(log_level));
 
-    rustls::crypto::ring::default_provider()
+    rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
-        .map_err(|_| anyhow!("Failed to install rustls ring CryptoProvider"))?;
+        .map_err(|_| anyhow!("Failed to install rustls aws-lc-rs CryptoProvider"))?;
 
     let config = config::Config::load_with_args(&args).await;
 

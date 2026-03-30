@@ -24,6 +24,7 @@ advisory-lock = "0.3.0"
 anyhow = "1.0.68"
 async-stream = "0.3"
 async-trait = "0.1.64"
+base16ct = "1.0.0"
 bstr = { version = "1.2.0", features = ["serde"] }
 bytes = "1.11.1"
 # we don't use bzip2 directly, but enable the libbz2-rs-sys feature
@@ -36,28 +37,28 @@ dirs = "6"
 env_logger = "0.11"
 fastrand = "2"
 futures = "0.3.26"
-getrandom = "0.3"
-gix = { version = "0.73", optional = true }
-gix-object = { version = "0.50", optional = true }
+getrandom = "0.4"
+gix = { version = "0.79", optional = true }
+gix-object = { version = "0.56", optional = true }
 hex = "0.4.3"
 indexmap = "2"
 ipnetwork = "0.21"
 irc = { version = "1", optional = true, default-features = false, features = ["tls-rust"] }
 log = "0.4.17"
 lru = "0.16"
-lz4_flex = "0.11.3"
+lz4_flex = "0.13"
 memchr = "2.5.0"
 num-format = "0.4"
-reqwest = { version = "0.12", features = ["rustls-tls", "socks", "stream"], default-features = false }
+reqwest = { version = "0.13", features = ["rustls", "socks", "stream"], default-features = false }
 rustls = { version = "0.23", default-features = false }
 sequoia-openpgp = { version = "2", default-features = false, features = ["compression", "crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto"] }
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.92"
-sha2 = "0.10.6"
+sha2 = "0.11"
 socket2 = "0.6"
 tokio = { version = "1.23.0", features = ["macros", "rt-multi-thread", "io-util", "io-std", "fs", "process", "net"] }
 tokio-socks = "0.5.1"
-toml = "0.9"
+toml = "1.0"
 url = "2.5"
 
 [target.'cfg(target_os = "openbsd")'.dependencies]
