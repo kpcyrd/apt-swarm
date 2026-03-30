@@ -77,6 +77,14 @@ pub struct TreeQuery {
 }
 
 impl TreeQuery {
+    pub fn new<I: Into<String>>(fp: Fingerprint, hash_algo: I) -> Self {
+        TreeQuery {
+            fp: fp.clone(),
+            hash_algo: hash_algo.into(),
+            prefix: None,
+        }
+    }
+
     pub async fn write_to<W: AsyncWrite + Unpin>(&self, mut tx: W) -> Result<()> {
         let mut out = format!("{:X} {}", self.fp, self.hash_algo);
         if let Some(prefix) = &self.prefix {
@@ -521,6 +529,19 @@ mod tests {
         let _ = env_logger::builder().is_test(true).try_init();
     }
 
+    const EXAMPLE_KEYRING: &[u8] = include_bytes!("../contrib/signal-desktop-keyring.pgp");
+    const EMPTY_HASH: &str =
+        "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    fn example_tree_query() -> TreeQuery {
+        let fp = "DBA36B5181D0C816F630E889D980A17457F6FB06".parse().unwrap();
+        TreeQuery::new(fp, "sha256")
+    }
+
+    fn empty_index() -> (String, usize) {
+        (EMPTY_HASH.to_string(), 0)
+    }
+
     async fn open_temp_dbs() -> Result<(tempfile::TempDir, Database, Database)> {
         let dir = tempfile::tempdir()?;
         let db_a = Database::open_at(dir.path().join("a"), AccessMode::Exclusive).await?;
@@ -543,14 +564,44 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_tree_query_display() {
+        let query = example_tree_query();
+        assert_eq!(
+            query.to_string(),
+            "DBA36B5181D0C816F630E889D980A17457F6FB06/sha256:"
+        );
+    }
+
+    #[test]
+    fn test_example_tree_query_is_example_keyring() {
+        let keyring = Keyring::new(EXAMPLE_KEYRING).unwrap();
+
+        // Check the example query matches this keyring
+        let tree_query = example_tree_query();
+        assert_eq!(keyring.all_fingerprints(), &[tree_query.fp]);
+    }
+
     #[tokio::test]
     async fn test_sync_both_empty() -> Result<()> {
         init();
 
-        let keyring =
-            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.pgp")).unwrap();
+        let keyring = Keyring::new(EXAMPLE_KEYRING).unwrap();
+
+        // Run the sync on two empty db's
         let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
         run_sync(&keyring, &mut db_a, &mut db_b).await.unwrap();
+
+        // Calculate the sync index
+        let tree_query = example_tree_query();
+        assert_eq!(
+            index_from_scan(&db_a, &tree_query).await.unwrap(),
+            empty_index()
+        );
+        assert_eq!(
+            index_from_scan(&db_b, &tree_query).await.unwrap(),
+            empty_index()
+        );
 
         Ok(())
     }
@@ -559,8 +610,7 @@ mod tests {
     async fn test_sync_full() -> Result<()> {
         init();
 
-        let keyring =
-            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.pgp")).unwrap();
+        let keyring = Keyring::new(EXAMPLE_KEYRING).unwrap();
         let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
 
         let data = [
@@ -710,17 +760,54 @@ R4AjBHbzlyIGpU5BGNn3
             .unwrap();
         }
 
+        // Calculate the sync index
+        let tree_query = example_tree_query();
+        assert_eq!(
+            index_from_scan(&db_a, &tree_query).await.unwrap(),
+            (
+                "sha256:8cfc7ff62a9b8c8159788f8238a4fabab5c839ae63c20572ae0a6db912f666fb"
+                    .to_string(),
+                3
+            ),
+        );
+        assert_eq!(
+            index_from_scan(&db_b, &tree_query).await.unwrap(),
+            empty_index()
+        );
+
+        // Check initial database content
         let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 0);
 
+        // Run sync
         run_sync(&keyring, &mut db_a, &mut db_b).await.unwrap();
 
+        // Check database content afterwards
         let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 3);
+
+        // Calculate the sync index
+        let tree_query = example_tree_query();
+        assert_eq!(
+            index_from_scan(&db_a, &tree_query).await.unwrap(),
+            (
+                "sha256:8cfc7ff62a9b8c8159788f8238a4fabab5c839ae63c20572ae0a6db912f666fb"
+                    .to_string(),
+                3
+            ),
+        );
+        assert_eq!(
+            index_from_scan(&db_b, &tree_query).await.unwrap(),
+            (
+                "sha256:8cfc7ff62a9b8c8159788f8238a4fabab5c839ae63c20572ae0a6db912f666fb"
+                    .to_string(),
+                3
+            ),
+        );
 
         Ok(())
     }
@@ -729,8 +816,7 @@ R4AjBHbzlyIGpU5BGNn3
     async fn test_sync_from_partial() -> Result<()> {
         init();
 
-        let keyring =
-            Keyring::new(include_bytes!("../contrib/signal-desktop-keyring.pgp")).unwrap();
+        let keyring = Keyring::new(EXAMPLE_KEYRING).unwrap();
         let (_, mut db_a, mut db_b) = open_temp_dbs().await.unwrap();
 
         let data = [
@@ -933,17 +1019,58 @@ RdMJMk9txqB8GM5F2sO3
         .await
         .unwrap();
 
+        // Calculate the sync index
+        let tree_query = example_tree_query();
+        assert_eq!(
+            index_from_scan(&db_a, &tree_query).await.unwrap(),
+            (
+                "sha256:8cfc7ff62a9b8c8159788f8238a4fabab5c839ae63c20572ae0a6db912f666fb"
+                    .to_string(),
+                3
+            ),
+        );
+        assert_eq!(
+            index_from_scan(&db_b, &tree_query).await.unwrap(),
+            (
+                "sha256:ec661134c817590c2b39c6e004bcab527a3b9d83702c62fbb7d5a1546a639df4"
+                    .to_string(),
+                1
+            ),
+        );
+
+        // Check initial database content
         let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 1);
 
+        // Run sync
         run_sync(&keyring, &mut db_a, &mut db_b).await.unwrap();
 
+        // Check database content afterwards
         let keys_a = db_a.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         let keys_b = db_b.scan_keys(b"").try_collect::<Vec<_>>().await.unwrap();
         assert_eq!(keys_a.len(), 3);
         assert_eq!(keys_b.len(), 3);
+
+        // Calculate the sync index
+        let tree_query = example_tree_query();
+        assert_eq!(
+            index_from_scan(&db_a, &tree_query).await.unwrap(),
+            (
+                "sha256:8cfc7ff62a9b8c8159788f8238a4fabab5c839ae63c20572ae0a6db912f666fb"
+                    .to_string(),
+                3
+            ),
+        );
+        assert_eq!(
+            index_from_scan(&db_b, &tree_query).await.unwrap(),
+            (
+                "sha256:8cfc7ff62a9b8c8159788f8238a4fabab5c839ae63c20572ae0a6db912f666fb"
+                    .to_string(),
+                3
+            ),
+        );
 
         Ok(())
     }
