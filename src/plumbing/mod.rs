@@ -1,5 +1,3 @@
-#[cfg(feature = "git")]
-pub mod git;
 pub mod update;
 
 use crate::args::{FileOrStdin, Plumbing};
@@ -223,63 +221,6 @@ pub async fn run(
                 );
             }
         },
-        #[cfg(feature = "git")]
-        Plumbing::GitObject(git) => {
-            for path in &git.paths {
-                let mut buf = Vec::new();
-                let mut reader = path.open().await?;
-                reader.read_to_end(&mut buf).await?;
-
-                let signed = git::convert(git.kind, &buf)?;
-                let normalized = signed.to_clear_signed()?;
-
-                let mut stdout = io::stdout();
-                stdout.write_all(&normalized).await?;
-                // https://github.com/tokio-rs/tokio/issues/7174
-                stdout.flush().await?;
-            }
-        }
-        #[cfg(feature = "git")]
-        Plumbing::GitScrape(git) => {
-            use gix::object::Kind;
-
-            let mut stdout = io::stdout();
-            for path in git.paths {
-                info!("Opening git repository: {:?}", path);
-                let repo = gix::open(&path)
-                    .with_context(|| anyhow!("Failed to open git repo: {:?}", path))?;
-
-                for obj in repo.objects.iter()? {
-                    let obj = obj.context("Failed to read git object list")?;
-
-                    trace!("Accessing git object: {}", obj);
-                    let obj = repo
-                        .find_object(obj)
-                        .context("Failed to access git object")?;
-
-                    let Ok(signed) = (match obj.kind {
-                        Kind::Commit => {
-                            trace!("Found git commit: {:?}", obj);
-                            git::convert(Some(git::Kind::Commit), &obj.data)
-                        }
-                        Kind::Tag => {
-                            trace!("Found git tag: {:?}", obj);
-                            git::convert(Some(git::Kind::Tag), &obj.data)
-                        }
-                        _ => continue,
-                    }) else {
-                        continue;
-                    };
-
-                    debug!("Found signed git object: {:?}", obj.id);
-                    let normalized = signed.to_clear_signed()?;
-
-                    stdout.write_all(&normalized).await?;
-                }
-            }
-            // https://github.com/tokio-rs/tokio/issues/7174
-            stdout.flush().await?;
-        }
         Plumbing::AttachSig(attach) => {
             let content = fs::read(&attach.content).await.with_context(|| {
                 anyhow!("Failed to read content from file: {:?}", attach.content)

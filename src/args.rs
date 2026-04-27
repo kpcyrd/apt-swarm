@@ -1,8 +1,6 @@
 use crate::errors::*;
 use crate::p2p;
 use crate::p2p::proto::{PeerAddr, PeerFilter};
-#[cfg(feature = "git")]
-use crate::plumbing;
 use clap::{ArgAction, CommandFactory, Parser, Subcommand};
 use clap_complete::Shell;
 use std::ffi::OsString;
@@ -261,10 +259,6 @@ pub enum Plumbing {
     Fetch(PlumbingFetch),
     Fingerprint(Fingerprint),
     Fsck(Fsck),
-    #[cfg(feature = "git")]
-    GitObject(GitObject),
-    #[cfg(feature = "git")]
-    GitScrape(GitScrape),
     Index(Index),
     Migrate(Migrate),
     Paths(Paths),
@@ -356,22 +350,6 @@ pub struct Fingerprint {
 #[derive(Debug, Parser)]
 pub struct Fsck {
     pub prefix: Option<String>,
-}
-
-#[cfg(feature = "git")]
-/// Convert signed git objects into signature format used by apt-swarm
-#[derive(Debug, Parser)]
-pub struct GitObject {
-    pub paths: Vec<FileOrStdin>,
-    #[arg(short, long)]
-    pub kind: Option<plumbing::git::Kind>,
-}
-
-#[cfg(feature = "git")]
-/// Attempt to export all signed objects from a git repo
-#[derive(Debug, Parser)]
-pub struct GitScrape {
-    pub paths: Vec<PathBuf>,
 }
 
 /// Scan the database and calculate the requested index

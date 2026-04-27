@@ -111,8 +111,6 @@ jobs:
           - name: default
           - name: none
             flags: --no-default-features
-          - name: git
-            flags: --no-default-features -F git
           - name: irc
             flags: --no-default-features -F irc
     steps:
