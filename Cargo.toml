@@ -16,8 +16,7 @@ members = ["fuzz"]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(fuzzing)'] }
 
 [features]
-default = ["git", "irc"]
-git = ["gix", "gix-object"]
+default = ["irc"]
 
 [dependencies]
 advisory-lock = "0.3.0"
@@ -38,8 +37,6 @@ env_logger = "0.11"
 fastrand = "2"
 futures = "0.3.26"
 getrandom = "0.4"
-gix = { version = "0.79", optional = true }
-gix-object = { version = "0.56", optional = true }
 hex = "0.4.3"
 indexmap = "2"
 ipnetwork = "0.21"
