@@ -30,7 +30,7 @@ chrono = { version = "0.4", default-features = false, features = ["serde", "now"
 clap = { version = "4.0.32", features = ["derive", "env"] }
 clap_complete = "4.0.7"
 colored = "3"
-dirs = "6"
+dirs = "7"
 env_logger = "0.11"
 fastrand = "2"
 futures = "0.3.26"
