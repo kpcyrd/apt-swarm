@@ -26,13 +26,11 @@ async-trait = "0.1.64"
 base16ct = "1.0.0"
 bstr = { version = "1.2.0", features = ["serde"] }
 bytes = "1.11.1"
-# we don't use bzip2 directly, but enable the libbz2-rs-sys feature
-bzip2 = { version = "0.5.1", features = ["libbz2-rs-sys"] }
 chrono = { version = "0.4", default-features = false, features = ["serde", "now"] }
 clap = { version = "4.0.32", features = ["derive", "env"] }
 clap_complete = "4.0.7"
 colored = "3"
-dirs = "6"
+dirs = "7"
 env_logger = "0.11"
 fastrand = "2"
 futures = "0.3.26"
@@ -42,8 +40,8 @@ indexmap = "2"
 ipnetwork = "0.21"
 irc = { version = "1", optional = true, default-features = false, features = ["tls-rust"] }
 log = "0.4.17"
-lru = "0.18"
-lz4_flex = "0.13"
+lru = "0.19"
+lz4_flex = "0.14"
 memchr = "2.5.0"
 num-format = "0.4"
 reqwest = { version = "0.13", features = ["rustls", "socks", "stream"], default-features = false }
